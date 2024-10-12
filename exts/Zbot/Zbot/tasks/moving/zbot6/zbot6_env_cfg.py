@@ -171,7 +171,7 @@ class CurriculumCfg:
 
 
 @configclass
-class AntEnvCfg(ManagerBasedRLEnvCfg):
+class ZbotSFlatEnvCfg(ManagerBasedRLEnvCfg):
     """Configuration for the MuJoCo-style Ant walking environment."""
 
     # Scene settings
