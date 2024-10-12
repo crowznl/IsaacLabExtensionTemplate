@@ -9,7 +9,7 @@ from .zbot_env import ZbotSEnv, ZbotSEnvCfg
 
 gym.register(
     id="Isaac-Velocity-Flat-Zbot-6s-Direct-v0",
-    entry_point="Zbot.tasks.moving.zbot6-direct:ZbotSEnv",
+    entry_point="Zbot.tasks.moving.zbot6_direct:ZbotSEnv",
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": ZbotSEnvCfg, 
