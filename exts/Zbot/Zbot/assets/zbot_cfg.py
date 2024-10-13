@@ -44,14 +44,14 @@ ZBOT_D_6S_CFG = ArticulationCfg(
             max_depenetration_velocity=1.0,
         ),
         articulation_props=sim_utils.ArticulationRootPropertiesCfg(
-            enabled_self_collisions=False, 
+            enabled_self_collisions=True,  # True
             solver_position_iteration_count=4, 
             solver_velocity_iteration_count=0
         ),
     ),
     init_state=ArticulationCfg.InitialStateCfg(
         pos=(0.0, 0.0, 0.05),
-        rot=(0.707, 0.0, 0.707, 0.0),
+        rot=(0.707, 0.0, -0.707, 0.0),  # (w, x, y, z); y-axis -90; if y-axis 90, rot = (0.707, 0.0, 0.707, 0.0)
         joint_pos={
             "joint[1-6]": 0.0,
             # "z1/a1/joint1": 0.0,
@@ -77,7 +77,7 @@ ZBOT_D_6S_CFG = ArticulationCfg(
             # joint_names_expr=[".*joint"],
             joint_names_expr=["joint.*"],
             effort_limit=20,
-            velocity_limit=6,
+            velocity_limit=10,
             stiffness=20,
             damping=0.5,
             friction=0.0,

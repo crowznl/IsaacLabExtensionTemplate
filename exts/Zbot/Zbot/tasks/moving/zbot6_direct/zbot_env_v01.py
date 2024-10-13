@@ -24,7 +24,7 @@ class ZbotSEnvCfg(DirectRLEnvCfg):
     # env
     decimation = 2
     episode_length_s = 32
-    num_actions = 6
+    num_actions = 6*3
     num_observations = 25
     num_states = 0
 
@@ -33,12 +33,13 @@ class ZbotSEnvCfg(DirectRLEnvCfg):
 
     # robot
     robot_cfg: ArticulationCfg = ZBOT_D_6S_CFG.replace(prim_path="/World/envs/env_.*/Robot")
-
+    num_dof = 6
+    
     # scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=2, replicate_physics=True)
 
     # reset
-    max_out_pos = 1.0  # the robot is reset if it exceeds that position [m]
+    max_out_pos = 0.5  # the robot is reset if it exceeds that position [m]
 
     # reward scales
     rew_scale_alive = 1.0
@@ -51,8 +52,22 @@ class ZbotSEnv(DirectRLEnv):
     def __init__(self, cfg: ZbotSEnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
 
+        self.dt = self.cfg.sim.dt
+        self.num_dof = self.cfg.num_dof
+        self.targets = torch.tensor([10, 0, 0], dtype=torch.float32, device=self.sim.device).repeat(
+            (self.num_envs, 1)
+        )
+        self.targets += self.scene.env_origins
         # self._fisrt_dof_idx, _ = self.zbots.find_joints("joint1")
         # self._end_dof_idx, _ = self.zbots.find_joints("joint6")
+        # self.dof_lower_limits: torch.Tensor = self.zbots.data.soft_joint_pos_limits[0, :, 0]
+        # self.dof_upper_limits: torch.Tensor = self.zbots.data.soft_joint_pos_limits[0, :, 1]
+        # print(self.dof_lower_limits, self.dof_upper_limits)
+        m = 2*torch.pi
+        self.dof_lower_limits = torch.tensor([-0.5*m, -0.5*m, -0.5*m, -0.5*m, -0.5*m, -0.5*m], dtype=torch.float32, device=self.sim.device)
+        self.dof_upper_limits = torch.tensor([0.5*m, 0.5*m, 0.5*m, 0.5*m, 0.5*m, 0.5*m], dtype=torch.float32, device=self.sim.device)
+        self.pos_d = torch.zeros_like(self.zbots.data.joint_pos)
+        self.sim_count = 0
 
     def _setup_scene(self):
         self.zbots = Articulation(self.cfg.robot_cfg)
@@ -69,7 +84,29 @@ class ZbotSEnv(DirectRLEnv):
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
         self.actions = actions.clone()
+        # print('a: ', actions[0])
         # joint_sin-patten-generation_pos
+        t = self.sim_count * self.dt
+        ctl_d = self.actions.view(self.num_envs, self.num_dof, 3)
+        vmax = 5*torch.pi
+        off = (ctl_d[...,0]+0)*vmax
+        amp = (1 - torch.abs(ctl_d[...,0]))*(ctl_d[...,1]+0)*vmax
+        phi = (ctl_d[...,2]+0)*2*torch.pi
+        omg = torch.ones_like(ctl_d[...,0]+0)*2*torch.pi
+
+        v_d = (off + amp*torch.sin(omg*t + phi))
+        self.pos_d += v_d* self.dt
+        self.pos_d = torch.clamp(self.pos_d, min=0.5*self.dof_lower_limits, max=0.5*self.dof_upper_limits)
+        
+        # print(self.pos_d.size(), self.pos_d[0])
+        # self.pos_d[:,0] = 0
+        # self.pos_d[:,5] = 0
+        self.sim_count += 1
+        # add current joint positions to the processed actions
+        # current_joint_pos = self.zbots.data.joint_pos
+        # # print('c: ', current_joint_pos[0])
+        # torch.clip: Alias for torch.clamp().
+        # self.relative_actions = torch.clip(self.actions + current_joint_pos, min=-6.283, max=6.283)
 
     def _apply_action(self) -> None:
         # joint_efforts:
@@ -79,9 +116,9 @@ class ZbotSEnv(DirectRLEnv):
         # self.zbots.set_joint_position_target(self.actions)
         
         # joint_relative_pos:
-        # add current joint positions to the processed actions
-        relative_actions = self.actions + self.zbots.data.joint_pos
-        self.zbots.set_joint_position_target(relative_actions)
+        # self.zbots.set_joint_position_target(self.relative_actions)
+
+        self.zbots.set_joint_position_target(self.pos_d)
 
     def _compute_intermediate_values(self):
         # self.body_pos = self.zbots.data.body_pos_w
@@ -118,8 +155,10 @@ class ZbotSEnv(DirectRLEnv):
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         time_out = self.episode_length_buf >= self.max_episode_length - 1
-        out_of_direction = torch.any(torch.abs(self.body_states[:, 0, 2]) > self.cfg.max_out_pos)
-        out_of_direction = out_of_direction| torch.any(torch.abs(self.body_states[:, 6, 2]) > self.cfg.max_out_pos)
+        # out_of_direction = torch.any(torch.abs(self.body_states[:, 0, 2]) > self.cfg.max_out_pos)
+        # out_of_direction = out_of_direction | torch.any(torch.abs(self.body_states[:, 6, 2]) > self.cfg.max_out_pos)
+        out_of_direction = torch.any(torch.abs(self.body_states[:, 3, 2]-self.body_states[:, 0, 2]) > 0.1)
+        out_of_direction = out_of_direction | torch.any(torch.abs(self.body_states[:, 3, 2]-self.body_states[:, 6, 2]) > 0.1)
         return out_of_direction, time_out
 
     def _reset_idx(self, env_ids: torch.Tensor | None):
@@ -132,12 +171,15 @@ class ZbotSEnv(DirectRLEnv):
         joint_vel = self.zbots.data.default_joint_vel[env_ids]
         default_root_state = self.zbots.data.default_root_state[env_ids]
         default_root_state[:, :3] += self.scene.env_origins[env_ids]
+        
+        print(joint_pos[0], joint_vel[0], default_root_state[0])
 
         self.zbots.write_root_pose_to_sim(default_root_state[:, :7], env_ids)
         self.zbots.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids)
         self.zbots.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
         
-        # self.sim_count = 0
+        self.sim_count = 0
+        self.pos_d[env_ids] = 0
         self._compute_intermediate_values()
 
 
@@ -150,5 +192,5 @@ def compute_rewards(
 ):
     rew_alive = rew_scale_alive * (1.0 - reset_terminated.float())
     rew_termination = rew_scale_terminated * reset_terminated.float()
-    total_reward = 0.0*rew_termination + 0.0*rew_alive + 1.0*body_states[:, 3, 7] - 0.2*torch.abs(body_states[:, 0, 1]) - 0.2*torch.abs(body_states[:, 6, 1]) - 0.1*torch.abs(body_states[:, 3, 1])
+    total_reward = 0.0*rew_termination + 0.0*rew_alive + 1.0*body_states[:, 3, 7] - 0.5*torch.abs(body_states[:, 0, 1]) - 0.5*torch.abs(body_states[:, 6, 1]) - 0.2*torch.abs(body_states[:, 3, 1])
     return total_reward
