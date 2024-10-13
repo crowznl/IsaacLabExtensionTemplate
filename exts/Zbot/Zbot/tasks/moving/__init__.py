@@ -1,3 +1,3 @@
-"""Locomotion environments for legged robots."""
+"""Locomotion environments for zbot."""
 
 from .zbot6_direct import *  # noqa

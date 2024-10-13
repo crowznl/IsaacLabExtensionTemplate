@@ -24,8 +24,8 @@ class ZbotSEnvCfg(DirectRLEnvCfg):
     episode_length_s = 15.0
     decimation = 2
     action_scale = 0.5
-    num_actions = 8
-    num_observations = 36
+    num_actions = 6
+    num_observations = 28
     num_states = 0
 
     # simulation
