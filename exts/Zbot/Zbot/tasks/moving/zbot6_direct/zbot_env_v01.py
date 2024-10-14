@@ -58,6 +58,7 @@ class ZbotSEnv(DirectRLEnv):
             (self.num_envs, 1)
         )
         self.targets += self.scene.env_origins
+        print(self.scene.env_origins)
         # self._fisrt_dof_idx, _ = self.zbots.find_joints("joint1")
         # self._end_dof_idx, _ = self.zbots.find_joints("joint6")
         # self.dof_lower_limits: torch.Tensor = self.zbots.data.soft_joint_pos_limits[0, :, 0]
@@ -67,6 +68,7 @@ class ZbotSEnv(DirectRLEnv):
         self.dof_lower_limits = torch.tensor([-0.5*m, -0.5*m, -0.5*m, -0.5*m, -0.5*m, -0.5*m], dtype=torch.float32, device=self.sim.device)
         self.dof_upper_limits = torch.tensor([0.5*m, 0.5*m, 0.5*m, 0.5*m, 0.5*m, 0.5*m], dtype=torch.float32, device=self.sim.device)
         self.pos_d = torch.zeros_like(self.zbots.data.joint_pos)
+        self.max_off = torch.ones_like(self.zbots.data.body_state_w[:, 0, 0])
         self.sim_count = 0
 
     def _setup_scene(self):
@@ -154,11 +156,17 @@ class ZbotSEnv(DirectRLEnv):
         return total_reward
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
+        self._compute_intermediate_values()
+        print(self.body_states[0])
+        print(self.body_states[1])
         time_out = self.episode_length_buf >= self.max_episode_length - 1
         # out_of_direction = torch.any(torch.abs(self.body_states[:, 0, 2]) > self.cfg.max_out_pos)
         # out_of_direction = out_of_direction | torch.any(torch.abs(self.body_states[:, 6, 2]) > self.cfg.max_out_pos)
-        out_of_direction = torch.any(torch.abs(self.body_states[:, 3, 2]-self.body_states[:, 0, 2]) > 0.1)
-        out_of_direction = out_of_direction | torch.any(torch.abs(self.body_states[:, 3, 2]-self.body_states[:, 6, 2]) > 0.1)
+        # print(self.body_states[:, 3, 2]-self.body_states[:, 0, 2])
+        out_of_direction = torch.abs(self.body_states[:, 3, 1]-self.body_states[:, 0, 1]) > 0.18
+        # print("out_of_direction: ", out_of_direction)
+        out_of_direction = out_of_direction | (torch.abs(self.body_states[:, 3, 1]-self.body_states[:, 6, 1]) > 0.18)
+        print("out_of_direction2: ", out_of_direction)
         return out_of_direction, time_out
 
     def _reset_idx(self, env_ids: torch.Tensor | None):
@@ -192,5 +200,5 @@ def compute_rewards(
 ):
     rew_alive = rew_scale_alive * (1.0 - reset_terminated.float())
     rew_termination = rew_scale_terminated * reset_terminated.float()
-    total_reward = 0.0*rew_termination + 0.0*rew_alive + 1.0*body_states[:, 3, 7] - 0.5*torch.abs(body_states[:, 0, 1]) - 0.5*torch.abs(body_states[:, 6, 1]) - 0.2*torch.abs(body_states[:, 3, 1])
+    total_reward = 0.0*rew_termination + 0.0*rew_alive + 1.0*body_states[:, 3, 0] + 1.0*body_states[:, 3, 7] - 0.5*torch.abs(body_states[:, 0, 1]) - 0.5*torch.abs(body_states[:, 6, 1]) - 0.2*torch.abs(body_states[:, 3, 1])
     return total_reward
