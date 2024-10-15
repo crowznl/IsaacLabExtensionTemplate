@@ -163,9 +163,9 @@ class ZbotSEnv(DirectRLEnv):
         # out_of_direction = torch.any(torch.abs(self.body_states[:, 0, 2]) > self.cfg.max_out_pos)
         # out_of_direction = out_of_direction | torch.any(torch.abs(self.body_states[:, 6, 2]) > self.cfg.max_out_pos)
         # print(self.body_states[:, 3, 2]-self.body_states[:, 0, 2])
-        out_of_direction = torch.abs(self.body_states[:, 3, 1]-self.body_states[:, 0, 1]) > 0.18
+        out_of_direction = torch.abs(self.body_states[:, 3, 1]-self.body_states[:, 0, 1]) > 0.15
         # print("out_of_direction: ", out_of_direction)
-        out_of_direction = out_of_direction | (torch.abs(self.body_states[:, 3, 1]-self.body_states[:, 6, 1]) > 0.18)
+        out_of_direction = out_of_direction | (torch.abs(self.body_states[:, 3, 1]-self.body_states[:, 6, 1]) > 0.15)
         print("out_of_direction2: ", out_of_direction)
         return out_of_direction, time_out
 
