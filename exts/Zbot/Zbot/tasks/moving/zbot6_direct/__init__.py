@@ -2,7 +2,9 @@ import gymnasium as gym
 
 from . import agents
 # from .zbot_env_v00 import ZbotSEnv, ZbotSEnvCfg
-from .zbot_env_v01 import ZbotSEnv, ZbotSEnvCfg
+# from .zbot_env_v01 import ZbotSEnv, ZbotSEnvCfg
+from .zbot_env_v02 import ZbotSEnv, ZbotSEnvCfg
+
 
 ##
 # Register Gym environments.

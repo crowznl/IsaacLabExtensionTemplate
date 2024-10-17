@@ -14,9 +14,8 @@ from omni.isaac.lab.assets import Articulation, ArticulationCfg
 from omni.isaac.lab.envs import DirectRLEnv, DirectRLEnvCfg
 from omni.isaac.lab.scene import InteractiveSceneCfg
 from omni.isaac.lab.sim import SimulationCfg
-from omni.isaac.lab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
+from omni.isaac.lab.terrains import TerrainImporterCfg 
 from omni.isaac.lab.utils import configclass
-# from omni.isaac.lab.utils.math import sample_uniform
 
 
 @configclass
@@ -28,22 +27,37 @@ class ZbotSEnvCfg(DirectRLEnvCfg):
     num_observations = 25
     num_states = 0
 
+    action_clip = 1.0
+
     # simulation
     sim: SimulationCfg = SimulationCfg(dt=1 / 120, render_interval=decimation)
+    terrain = TerrainImporterCfg(
+        prim_path="/World/ground",
+        terrain_type="plane",
+        collision_group=-1,
+        physics_material=sim_utils.RigidBodyMaterialCfg(
+            friction_combine_mode="average",
+            restitution_combine_mode="average",
+            static_friction=1.0,
+            dynamic_friction=1.0,
+            restitution=0.0,
+        ),
+        debug_vis=False,
+    )
 
     # robot
     robot_cfg: ArticulationCfg = ZBOT_D_6S_CFG.replace(prim_path="/World/envs/env_.*/Robot")
     num_dof = 6
+    num_body = 12
     
     # scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=2, replicate_physics=True)
 
     # reset
-    max_out_pos = 0.5  # the robot is reset if it exceeds that position [m]
+    max_off = 0.25 # the robot is reset if it exceeds that position [m]
 
     # reward scales
-    rew_scale_alive = 1.0
-    rew_scale_terminated = -2.0
+
 
 
 class ZbotSEnv(DirectRLEnv):
@@ -54,13 +68,21 @@ class ZbotSEnv(DirectRLEnv):
 
         self.dt = self.cfg.sim.dt
         self.num_dof = self.cfg.num_dof
+        self.num_body = self.cfg.num_body
         self.targets = torch.tensor([10, 0, 0], dtype=torch.float32, device=self.sim.device).repeat(
             (self.num_envs, 1)
         )
         self.targets += self.scene.env_origins
+        # 重复最后一维 12 次
+        self.e_origins = self.scene.env_origins.unsqueeze(1).repeat(1, self.num_body, 1)
         print(self.scene.env_origins)
-        # self._fisrt_dof_idx, _ = self.zbots.find_joints("joint1")
+        # print(self.e_origins)
+        
+        # self._fisrt_dof_idx, _ = self.zbots.find_joints("joint1")  # A tuple of lists containing the joint indices and names.
+        # print(self._fisrt_dof_idx)  # [0]
+        # print(self.zbots.find_joints("joint.*"))  # ([0, 1, 2, 3, 4, 5], ['joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6'])
         # self._end_dof_idx, _ = self.zbots.find_joints("joint6")
+        
         # self.dof_lower_limits: torch.Tensor = self.zbots.data.soft_joint_pos_limits[0, :, 0]
         # self.dof_upper_limits: torch.Tensor = self.zbots.data.soft_joint_pos_limits[0, :, 1]
         # print(self.dof_lower_limits, self.dof_upper_limits)
@@ -68,16 +90,19 @@ class ZbotSEnv(DirectRLEnv):
         self.dof_lower_limits = torch.tensor([-0.5*m, -0.5*m, -0.5*m, -0.5*m, -0.5*m, -0.5*m], dtype=torch.float32, device=self.sim.device)
         self.dof_upper_limits = torch.tensor([0.5*m, 0.5*m, 0.5*m, 0.5*m, 0.5*m, 0.5*m], dtype=torch.float32, device=self.sim.device)
         self.pos_d = torch.zeros_like(self.zbots.data.joint_pos)
-        self.max_off = torch.ones_like(self.zbots.data.body_state_w[:, 0, 0])
+        # self.max_off = torch.ones_like(self.zbots.data.body_state_w[:, 0, 0])
+        # self.max_off = self.cfg.max_off
         self.sim_count = 0
 
     def _setup_scene(self):
         self.zbots = Articulation(self.cfg.robot_cfg)
         # add ground plane
-        spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())
+        self.cfg.terrain.num_envs = self.scene.cfg.num_envs
+        self.cfg.terrain.env_spacing = self.scene.cfg.env_spacing
+        self.terrain = self.cfg.terrain.class_type(self.cfg.terrain)
         # clone, filter, and replicate
         self.scene.clone_environments(copy_from_source=False)
-        self.scene.filter_collisions(global_prim_paths=[])
+        self.scene.filter_collisions(global_prim_paths=[self.cfg.terrain.prim_path])
         # add articultion to scene
         self.scene.articulations["zbots"] = self.zbots
         # add lights
@@ -86,7 +111,10 @@ class ZbotSEnv(DirectRLEnv):
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
         self.actions = actions.clone()
+        # clip the actions
+        actions = torch.clamp(actions, -self.cfg.action_clip, self.cfg.action_clip)
         # print('a: ', actions[0])
+        
         # joint_sin-patten-generation_pos
         t = self.sim_count * self.dt
         ctl_d = self.actions.view(self.num_envs, self.num_dof, 3)
@@ -123,20 +151,42 @@ class ZbotSEnv(DirectRLEnv):
         self.zbots.set_joint_position_target(self.pos_d)
 
     def _compute_intermediate_values(self):
-        # self.body_pos = self.zbots.data.body_pos_w
-        self.body_states = self.zbots.data.body_state_w
+        # self.body_pos = self.zbots.data.body_pos_w  # [64, 12, 3]
+        # self.body_states = self.zbots.data.body_state_w  # [64, 12, 13]
+        # print(self.zbots.data.body_pos.size())
+        # print("bs", self.zbots.data.body_state_w.size())
+        # print(self.zbots.data.body_state_w[0, 0, 0:7])  # e.g. 7.000
+        # print(self.zbots.data.body_state_w[0, 1, 0:7])  # 6.947 = 7-0.053*1
+        # print(self.zbots.data.body_state_w[0, 6, 0:7])  # 6.682 = 7-0.106*3
+        # print(self.zbots.data.body_state_w[0, 10, 0:7]) # 6.470 = 7-0.106*5
+        # print(self.zbots.data.body_state_w[0, 11, 0:7]) # 6.417 = 7-0.053*11
+        
         # self.body_pos = self.body_states[..., 0:3]
         # self.body_quat = self.body_states[..., 3:7]
-        
-        self.center_pos = self.body_states[:, 3, :]
+        # self.center_pos = self.body_states[:, 6, :]
 
         self.joint_pos = self.zbots.data.joint_pos
         self.joint_vel = self.zbots.data.joint_vel
+        # print(self.joint_pos.size())  # [64, 6]
+        # print(self.joint_vel.size())  # [64, 6]
+        
+        (
+            self.body_pos,
+            self.center_pos,
+            self.body_states,
+            self.to_target
+        ) = compute_intermediate_values(
+            self.e_origins,
+            self.zbots.data.body_pos_w,
+            self.zbots.data.body_state_w,
+            self.targets,
+        )
 
     def _get_observations(self) -> dict:
         obs = torch.cat(
             (
-                self.body_states[:,3,:].squeeze(dim=1),
+                self.body_states[:,6,:].squeeze(dim=1),
+                # self.center_pos,
                 self.joint_vel,
                 self.joint_pos,
                 # 13+6+6
@@ -148,8 +198,6 @@ class ZbotSEnv(DirectRLEnv):
 
     def _get_rewards(self) -> torch.Tensor:
         total_reward = compute_rewards(
-            self.cfg.rew_scale_alive,
-            self.cfg.rew_scale_terminated,
             self.body_states,
             self.reset_terminated,
         )
@@ -157,21 +205,17 @@ class ZbotSEnv(DirectRLEnv):
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         self._compute_intermediate_values()
-        # print(self.body_states[0])
+        
         # print(self.body_states[1])
-        # _w means in simulation world frame
-        print("0", self.body_states[0, 0, :])
-        print("0r", self.zbots.data.root_state_w[0])
-        print("1", self.body_states[1, 0, :])
-        print("1r", self.zbots.data.root_state_w[1])
         time_out = self.episode_length_buf >= self.max_episode_length - 1
-        # out_of_direction = torch.any(torch.abs(self.body_states[:, 0, 2]) > self.cfg.max_out_pos)
-        # out_of_direction = out_of_direction | torch.any(torch.abs(self.body_states[:, 6, 2]) > self.cfg.max_out_pos)
-        # print(self.body_states[:, 3, 2]-self.body_states[:, 0, 2])
-        out_of_direction = torch.abs(self.body_states[:, 3, 1]-self.body_states[:, 0, 1]) > 0.15
+        # out_of_direction = torch.any(torch.abs(self.body_states[:, 0, 1]) > self.cfg.max_off)  # any((N,)的布尔张量)->标量布尔值
+        # out_of_direction = torch.any(torch.abs(self.body_states[:, [0], 1]) > self.cfg.max_off)  # any((N, 1)的布尔张量)->标量布尔值
+        # out_of_direction = torch.any(torch.abs(self.body_states[:, [0], 1]) > self.cfg.max_off, dim=1)  # any((N, 1)的布尔张量, dim=1)->(N,) 的一维布尔张量
+        # out_of_direction = out_of_direction | torch.any(torch.abs(self.body_states[:, [10], 1]) > self.cfg.max_off, dim=1)
+        # print(self.body_states[:, 6, 1]-self.body_states[:, 0, 1])
+        out_of_direction = torch.abs(self.body_states[:, 6, 1]-self.body_states[:, 1, 1]) > self.cfg.max_off
+        out_of_direction = out_of_direction | (torch.abs(self.body_states[:, 6, 1]-self.body_states[:, 11, 1]) > self.cfg.max_off)
         # print("out_of_direction: ", out_of_direction)
-        out_of_direction = out_of_direction | (torch.abs(self.body_states[:, 3, 1]-self.body_states[:, 6, 1]) > 0.15)
-        print("out_of_direction2: ", out_of_direction)
         return out_of_direction, time_out
 
     def _reset_idx(self, env_ids: torch.Tensor | None):
@@ -184,11 +228,11 @@ class ZbotSEnv(DirectRLEnv):
         joint_vel = self.zbots.data.default_joint_vel[env_ids]
         default_root_state = self.zbots.data.default_root_state[env_ids]
         default_root_state[:, :3] += self.scene.env_origins[env_ids]
-        
         # print(joint_pos[0], joint_vel[0], default_root_state[0])
 
-        self.zbots.write_root_pose_to_sim(default_root_state[:, :7], env_ids)
-        self.zbots.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids)
+        # self.zbots.write_root_pose_to_sim(default_root_state[:, :7], env_ids)
+        # self.zbots.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids)
+        self.zbots.write_root_state_to_sim(default_root_state, env_ids)
         self.zbots.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
         
         self.sim_count = 0
@@ -198,14 +242,34 @@ class ZbotSEnv(DirectRLEnv):
 
 @torch.jit.script
 def compute_rewards(
-    rew_scale_alive: float,
-    rew_scale_terminated: float,
     body_states: torch.Tensor,
     reset_terminated: torch.Tensor,
 ):
-    rew_alive = rew_scale_alive * (1.0 - reset_terminated.float())
-    rew_termination = rew_scale_terminated * reset_terminated.float()
-    total_reward = 0.0*rew_termination + 0.0*rew_alive + 1.0*body_states[:, 3, 0] + 1.0*body_states[:, 3, 7] - 0.5*torch.abs(body_states[:, 0, 1]) - 0.5*torch.abs(body_states[:, 6, 1]) - 0.2*torch.abs(body_states[:, 3, 1])
-    # adjust reward for fallen agents
-    total_reward = torch.where(reset_terminated, torch.zeros_like(total_reward), total_reward)
+    total_reward = 1.0*body_states[:, 6, 0] + 1.0*body_states[:, 6, 7] - 0.5*torch.abs(body_states[:, 0, 1]) - 0.5*torch.abs(body_states[:, 10, 1]) - 0.2*torch.abs(body_states[:, 6, 1])
+    # adjust reward for wrong way reset agents
+    total_reward = torch.where(reset_terminated, -100*torch.zeros_like(total_reward), total_reward)
+    total_reward = torch.clamp(total_reward, min=-0, max=torch.inf)
+    # print(total_reward)
     return total_reward
+
+
+@torch.jit.script
+def compute_intermediate_values(
+    e_origins: torch.Tensor,
+    body_pos_w: torch.Tensor,
+    body_state_w: torch.Tensor,
+    targets_w: torch.Tensor,
+):
+    to_target = targets_w - body_pos_w[:, 6, :]
+    to_target[:, 2] = 0.0
+    body_pos = body_pos_w - e_origins
+    center_pos = body_pos[:, 6, :]
+    body_states = body_state_w.clone()
+    body_states[:, :, 0:3] = body_pos
+    
+    return(
+        body_pos,
+        center_pos,
+        body_states,
+        to_target,
+    )
