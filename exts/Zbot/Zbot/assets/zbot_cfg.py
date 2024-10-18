@@ -51,7 +51,8 @@ ZBOT_D_6S_CFG = ArticulationCfg(
     ),
     init_state=ArticulationCfg.InitialStateCfg(
         pos=(0.0, 0.0, 0.05),
-        rot=(0.707, 0.0, -0.707, 0.0),  # (w, x, y, z); y-axis -90; if y-axis 90, rot = (0.707, 0.0, 0.707, 0.0)
+        # rot=(0.707, 0.0, -0.707, 0.0),  # (w, x, y, z); y-axis -90; if y-axis 90, rot = (0.707, 0.0, 0.707, 0.0),
+        rot = (0.707, 0.0, 0.707, 0.0),
         joint_pos={
             "joint[1-6]": 0.0,
             # "z1/a1/joint1": 0.0,

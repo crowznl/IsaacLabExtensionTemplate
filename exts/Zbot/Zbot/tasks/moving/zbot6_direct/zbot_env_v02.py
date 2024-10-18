@@ -55,6 +55,7 @@ class ZbotSEnvCfg(DirectRLEnvCfg):
 
     # reset
     max_off = 0.2 # the robot is reset if it exceeds that position [m]
+    max_height = 0.1
 
     # reward scales
 
@@ -215,6 +216,7 @@ class ZbotSEnv(DirectRLEnv):
         # print(self.body_states[:, 6, 1]-self.body_states[:, 0, 1])
         out_of_direction = torch.abs(self.body_states[:, 6, 1]-self.body_states[:, 1, 1]) > self.cfg.max_off
         out_of_direction = out_of_direction | (torch.abs(self.body_states[:, 6, 1]-self.body_states[:, 11, 1]) > self.cfg.max_off)
+        out_of_direction = out_of_direction | torch.any(self.body_states[:, :, 2] > self.cfg.max_height, dim=1)
         # print("out_of_direction: ", out_of_direction)
         return out_of_direction, time_out
 

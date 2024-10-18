@@ -23,7 +23,7 @@ class ZbotSEnvCfg(DirectRLEnvCfg):
     # env
     decimation = 2
     episode_length_s = 32
-    num_actions = 6*3
+    num_actions = 3
     num_observations = 25
     num_states = 0
 
@@ -69,9 +69,7 @@ class ZbotSEnv(DirectRLEnv):
         self.dt = self.cfg.sim.dt
         self.num_dof = self.cfg.num_dof
         self.num_body = self.cfg.num_body
-        self.targets = torch.tensor([10, 0, 0], dtype=torch.float32, device=self.sim.device).repeat(
-            (self.num_envs, 1)
-        )
+        self.targets = torch.tensor([10, 0, 0], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
         self.targets += self.scene.env_origins
         # 重复最后一维 12 次
         self.e_origins = self.scene.env_origins.unsqueeze(1).repeat(1, self.num_body, 1)
@@ -87,8 +85,10 @@ class ZbotSEnv(DirectRLEnv):
         # self.dof_upper_limits: torch.Tensor = self.zbots.data.soft_joint_pos_limits[0, :, 1]
         # print(self.dof_lower_limits, self.dof_upper_limits)
         m = 2*torch.pi
+        self.phi = torch.tensor([0, 0.25*m, 0.5*m, 0.75*m, 1.0*m, 1.25*m], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
         self.dof_lower_limits = torch.tensor([-0.5*m, -0.5*m, -0.5*m, -0.5*m, -0.5*m, -0.5*m], dtype=torch.float32, device=self.sim.device)
         self.dof_upper_limits = torch.tensor([0.5*m, 0.5*m, 0.5*m, 0.5*m, 0.5*m, 0.5*m], dtype=torch.float32, device=self.sim.device)
+        self.pos_c = torch.zeros_like(self.zbots.data.joint_pos)
         self.pos_d = torch.zeros_like(self.zbots.data.joint_pos)
         # self.max_off = torch.ones_like(self.zbots.data.body_state_w[:, 0, 0])
         # self.max_off = self.cfg.max_off
@@ -117,16 +117,26 @@ class ZbotSEnv(DirectRLEnv):
         
         # joint_sin-patten-generation_pos
         t = self.sim_count.unsqueeze(1) * self.dt
-        ctl_d = self.actions.view(self.num_envs, self.num_dof, 3)
-        vmax = 6*torch.pi
-        off = (ctl_d[...,0]+0)*vmax
-        amp = (1 - torch.abs(ctl_d[...,0]))*(ctl_d[...,1]+0)*vmax
-        phi = (ctl_d[...,2]+0)*2*torch.pi
-        omg = torch.ones_like(ctl_d[...,0]+0)*2*torch.pi
-        # print(t.size(), ctl_d.size(), off.size(), amp.size(), phi.size(), omg.size())
-        v_d = (off + amp*torch.sin(omg*t + phi))
-        self.pos_d += v_d* self.dt
-        self.pos_d = torch.clamp(self.pos_d, min=0.5*self.dof_lower_limits, max=0.5*self.dof_upper_limits)
+        omg = actions[:,0].unsqueeze(1)*6*torch.pi
+        amp = actions[:,1].unsqueeze(1)*1*torch.pi
+        off = (1 - torch.abs(actions[:,1]))*actions[:,2]*1*torch.pi
+        off = off.unsqueeze(1)
+        # print(t.shape, self.phi.shape, off.shape, amp.shape, omg.shape)
+        self.pos_d = amp*torch.sin(omg*t + self.phi) + off
+        self.pos_c += torch.clamp(self.pos_d, min=0.01*self.dof_lower_limits, max=0.01*self.dof_upper_limits)
+
+        # joint_sin-patten-generation_v
+        # t = self.sim_count.unsqueeze(1) * self.dt
+        # ctl_d = self.actions.view(self.num_envs, self.num_dof, 3)
+        # vmax = 6*torch.pi
+        # off = (ctl_d[...,0]+0)*vmax
+        # amp = (1 - torch.abs(ctl_d[...,0]))*(ctl_d[...,1]+0)*vmax
+        # phi = (ctl_d[...,2]+0)*2*torch.pi
+        # omg = torch.ones_like(ctl_d[...,0]+0)*2*torch.pi
+        # # print(t.size(), ctl_d.size(), off.size(), amp.size(), phi.size(), omg.size())
+        # v_d = (off + amp*torch.sin(omg*t + phi))
+        # self.pos_d += v_d* self.dt
+        # self.pos_d = torch.clamp(self.pos_d, min=0.5*self.dof_lower_limits, max=0.5*self.dof_upper_limits)
         
         # print(self.pos_d.size(), self.pos_d[0])
         # self.pos_d[:,0] = 0
@@ -148,7 +158,8 @@ class ZbotSEnv(DirectRLEnv):
         # joint_relative_pos:
         # self.zbots.set_joint_position_target(self.relative_actions)
 
-        self.zbots.set_joint_position_target(self.pos_d)
+        # self.zbots.set_joint_position_target(self.pos_d)
+        self.zbots.set_joint_position_target(self.pos_c)
 
     def _compute_intermediate_values(self):
         # self.body_pos = self.zbots.data.body_pos_w  # [64, 12, 3]
