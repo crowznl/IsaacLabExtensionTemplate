@@ -92,7 +92,7 @@ class ZbotSEnv(DirectRLEnv):
         self.pos_d = torch.zeros_like(self.zbots.data.joint_pos)
         # self.max_off = torch.ones_like(self.zbots.data.body_state_w[:, 0, 0])
         # self.max_off = self.cfg.max_off
-        self.sim_count = 0
+        self.sim_count = torch.zeros(self.scene.cfg.num_envs, dtype=torch.int, device=self.sim.device)
 
     def _setup_scene(self):
         self.zbots = Articulation(self.cfg.robot_cfg)
@@ -116,9 +116,9 @@ class ZbotSEnv(DirectRLEnv):
         # print('a: ', actions[0], actions.size())  # [64, 18]
         
         # joint_sin-patten-generation_pos
-        t = self.sim_count * self.dt
+        t = self.sim_count.unsqueeze(1) * self.dt
         ctl_d = self.actions.view(self.num_envs, self.num_dof, 3)
-        vmax = 4*torch.pi
+        vmax = 6*torch.pi
         off = (ctl_d[...,0]+0)*vmax
         amp = (1 - torch.abs(ctl_d[...,0]))*(ctl_d[...,1]+0)*vmax
         phi = (ctl_d[...,2]+0)*2*torch.pi
@@ -235,7 +235,7 @@ class ZbotSEnv(DirectRLEnv):
         self.zbots.write_root_state_to_sim(default_root_state, env_ids)
         self.zbots.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
         
-        self.sim_count = 0
+        self.sim_count[env_ids] = 0
         self.pos_d[env_ids] = 0
         self._compute_intermediate_values()
 
