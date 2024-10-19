@@ -106,6 +106,7 @@ class ZbotSEnv(DirectRLEnv):
         # self.max_off = torch.ones_like(self.zbots.data.body_state_w[:, 0, 0])
         # self.max_off = self.cfg.max_off
         self.sim_count = torch.zeros(self.scene.cfg.num_envs, dtype=torch.int, device=self.sim.device)
+        self.dead_count = torch.zeros(self.scene.cfg.num_envs, dtype=torch.int, device=self.sim.device)
 
     def _setup_scene(self):
         self.zbots = Articulation(self.cfg.robot_cfg)
@@ -229,7 +230,8 @@ class ZbotSEnv(DirectRLEnv):
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         self._compute_intermediate_values()
-        
+        alive = torch.norm(self.body_states[:, 6, -6:], p=2, dim=-1)
+        self.dead_count = torch.where(alive < 0.1 , self.dead_count + 1, self.dead_count)
         # print(self.body_states[1])
         time_out = self.episode_length_buf >= self.max_episode_length - 1
         # out_of_direction = torch.any(torch.abs(self.body_states[:, 0, 1]) > self.cfg.max_off)  # any((N,)的布尔张量)->标量布尔值
@@ -240,6 +242,7 @@ class ZbotSEnv(DirectRLEnv):
         out_of_direction = torch.abs(self.body_states[:, 6, 1]-self.body_states[:, 1, 1]) > self.cfg.max_off
         out_of_direction = out_of_direction | (torch.abs(self.body_states[:, 6, 1]-self.body_states[:, 11, 1]) > self.cfg.max_off)
         out_of_direction = out_of_direction | torch.any(self.body_states[:, :, 2] > self.cfg.max_height, dim=1)
+        out_of_direction = out_of_direction | (self.dead_count >= 100)
         # print("out_of_direction: ", out_of_direction)
         return out_of_direction, time_out
 
@@ -261,6 +264,7 @@ class ZbotSEnv(DirectRLEnv):
         self.zbots.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
         
         self.sim_count[env_ids] = 0
+        self.dead_count[env_ids] = 0
         self.pos_d[env_ids] = 0
         self._compute_intermediate_values()
 
@@ -271,13 +275,13 @@ def compute_rewards(
     reset_terminated: torch.Tensor,
 ):
     # total_reward = 1.0*body_states[:, 6, 0] + 1.0*body_states[:, 6, 7] - 0.2*torch.abs(body_states[:, 0, 1]) - 0.2*torch.abs(body_states[:, 10, 1]) - 0.1*torch.abs(body_states[:, 6, 1])
-    total_reward = 1.0*(body_states[:, 6, 0]+0.318) + 1.0*body_states[:, 6, 7] - 0.2*torch.abs(body_states[:, 0, 1]) - 0.2*torch.abs(body_states[:, 10, 1]) - 0.1*torch.abs(body_states[:, 6, 1])
+    total_reward = 1.0*(body_states[:, 6, 0]+0.318) + 1.0*body_states[:, 6, 7] - 0.4*torch.abs(body_states[:, 0, 1]) - 0.4*torch.abs(body_states[:, 10, 1]) - 0.2*torch.abs(body_states[:, 6, 1])
     # reward_a = total_reward- 0.3*torch.abs(body_states[:, 0, 1]) - 0.3*torch.abs(body_states[:, 10, 1]) - 0.1*torch.abs(body_states[:, 6, 1])
     # total_reward = torch.where(total_reward>1, reward_a, total_reward)
     
     # adjust reward for wrong way reset agents
-    total_reward = torch.where(reset_terminated, torch.zeros_like(total_reward), total_reward)
-    total_reward = torch.clamp(total_reward, min=0, max=torch.inf)
+    total_reward = torch.where(reset_terminated, -100*torch.zeros_like(total_reward), total_reward)
+    # total_reward = torch.clamp(total_reward, min=0, max=torch.inf)
     # print(total_reward)
     return total_reward
 
