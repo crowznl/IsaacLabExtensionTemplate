@@ -225,6 +225,7 @@ class ZbotSEnv(DirectRLEnv):
         total_reward = compute_rewards(
             self.body_states,
             self.reset_terminated,
+            self.num_envs
         )
         return total_reward
 
@@ -273,11 +274,16 @@ class ZbotSEnv(DirectRLEnv):
 def compute_rewards(
     body_states: torch.Tensor,
     reset_terminated: torch.Tensor,
+    num_envs: int,
 ):
     # total_reward = 1.0*body_states[:, 6, 0] + 1.0*body_states[:, 6, 7] - 0.2*torch.abs(body_states[:, 0, 1]) - 0.2*torch.abs(body_states[:, 10, 1]) - 0.1*torch.abs(body_states[:, 6, 1])
-    total_reward = 1.0*(body_states[:, 6, 0]+0.318) + 1.0*body_states[:, 6, 7] - 0.4*torch.abs(body_states[:, 0, 1]) - 0.4*torch.abs(body_states[:, 10, 1]) - 0.2*torch.abs(body_states[:, 6, 1])
+    # total_reward = 1.0*(body_states[:, 6, 0]+0.318) + 1.0*body_states[:, 6, 7] - 0.1*torch.abs(body_states[:, 0, 1]) - 0.1*torch.abs(body_states[:, 10, 1]) - 0.8*torch.abs(body_states[:, 6, 1])
     # reward_a = total_reward- 0.3*torch.abs(body_states[:, 0, 1]) - 0.3*torch.abs(body_states[:, 10, 1]) - 0.1*torch.abs(body_states[:, 6, 1])
     # total_reward = torch.where(total_reward>1, reward_a, total_reward)
+    # total_reward = 1.0*(body_states[:, 6, 0]+0.318) + 1.0*body_states[:, 6, 7] - 2*torch.abs(body_states[:, 6, 1])
+    # # snake stand
+    r1 = torch.where(body_states[:, 3, 2] > 0.21, torch.ones(num_envs), torch.zeros(num_envs))
+    total_reward = 0.5*body_states[:, 6, 9] + 0.1*body_states[:, 6, 2] + r1*(body_states[:, 6, 1])
     
     # adjust reward for wrong way reset agents
     total_reward = torch.where(reset_terminated, -100*torch.zeros_like(total_reward), total_reward)
