@@ -42,10 +42,11 @@ class ZbotSEnvCfg(DirectRLEnvCfg):
 
     action_clip = 1.0
 
-    # simulation
+    # simulation  # use_fabric=True the GUI will not update
     sim: SimulationCfg = SimulationCfg(
         dt=1 / 120,
         render_interval=decimation,
+        use_fabric=True,
         disable_contact_processing=True,
         physics_material=sim_utils.RigidBodyMaterialCfg(
             friction_combine_mode="multiply",
@@ -71,8 +72,57 @@ class ZbotSEnvCfg(DirectRLEnvCfg):
 
     # robot
     robot_cfg: ArticulationCfg = ZBOT_D_6S_CFG.replace(prim_path="/World/envs/env_.*/Robot")
-    contact_sensor: ContactSensorCfg = ContactSensorCfg(
-        prim_path="/World/envs/env_.*/Robot/.*", history_length=3, update_period=0.0, track_air_time=True
+    # contact_sensor: ContactSensorCfg = ContactSensorCfg(
+    #     prim_path="/World/envs/env_.*/Robot/.*", history_length=3, update_period=0.0, track_air_time=False, 
+    #     filter_prim_paths_expr=["/World/envs/env_.*/Robot/(a.*|b.*)"]
+    # )
+    # no error, but self._contact_sensor.data.force_matrix_w.size() = (64, 12, 1, 3)
+    
+    # contact_sensor: ContactSensorCfg = ContactSensorCfg(
+    #     prim_path="/World/envs/env_.*/Robot/.*", history_length=3, update_period=0.0, track_air_time=False, 
+    #     filter_prim_paths_expr=["/World/envs/env_.*/Robot/a.*", "/World/envs/env_.*/Robot/b.*"]
+    # )
+    # 2024-10-22 07:33:42 [8,033ms] [Error] [omni.physx.tensors.plugin] Filter pattern '/World/envs/env_*/Robot/a*' did not match the correct number of entries (expected 768, found 384)
+    # 2024-10-22 07:33:42 [8,034ms] [Error] [omni.physx.tensors.plugin] Filter pattern '/World/envs/env_*/Robot/b*' did not match the correct number of entries (expected 768, found 384)
+    # and self._contact_sensor.data.force_matrix_w.size() = (64, 12, 2, 3)
+    
+    # contact_sensor: ContactSensorCfg = ContactSensorCfg(
+    #     prim_path="/World/envs/env_.*/Robot/.*", history_length=3, update_period=0.0, track_air_time=False, 
+    #     filter_prim_paths_expr=["/World/envs/env_.*/Robot/a1", "/World/envs/env_.*/Robot/b1"]
+    # )
+    # 2024-10-22 09:38:52 [8,113ms] [Error] [omni.physx.tensors.plugin] Filter pattern '/World/envs/env_*/Robot/a1' did not match the correct number of entries (expected 768, found 64)
+    # 2024-10-22 09:38:52 [8,113ms] [Error] [omni.physx.tensors.plugin] Filter pattern '/World/envs/env_*/Robot/b1' did not match the correct number of entries (expected 768, found 64)
+    # and also self._contact_sensor.data.force_matrix_w.size() = (64, 12, 2, 3)
+
+    # contact_sensor: ContactSensorCfg = ContactSensorCfg(
+    #     prim_path="/World/envs/env_.*/Robot/a1", history_length=3, update_period=0.0, track_air_time=False, 
+    #     filter_prim_paths_expr=["/World/envs/env_.*/Robot/a.*", "/World/envs/env_.*/Robot/b.*"]
+    # )
+    # 2024-10-22 09:29:58 [8,210ms] [Error] [omni.physx.tensors.plugin] Filter pattern '/World/envs/env_*/Robot/a*' did not match the correct number of entries (expected 64, found 384)
+    # 2024-10-22 09:29:58 [8,211ms] [Error] [omni.physx.tensors.plugin] Filter pattern '/World/envs/env_*/Robot/b*' did not match the correct number of entries (expected 64, found 384)
+    # and self._contact_sensor.data.force_matrix_w.size() = (64, 1, 2, 3)
+
+    # contact_sensor: ContactSensorCfg = ContactSensorCfg(
+    #     prim_path="/World/envs/env_.*/Robot/b6", history_length=3, update_period=0.0, track_air_time=False, 
+    #     filter_prim_paths_expr=["/World/envs/env_.*/Robot/a1", "/World/envs/env_.*/Robot/b1"]
+    # )
+    # and self._contact_sensor.data.force_matrix_w.size() = (64, 1, 2, 3)
+    """
+    attention:
+    1. when use `filter_prim_paths_expr=[]`, make sure the sensor primitive prim_path corresponds to a single primitive in that environment. 
+        If the sensor primitive corresponds to multiple primitives, the filtering will not work as expected.
+    2. don't use regex in `filter_prim_paths_expr=[]`, it will cause wierd results in `self._contact_sensor.data.force_matrix_w.size()`
+    """
+    
+    # 理论上 全覆盖需要分5个contact_sensor: a1-b4,a5,b5,a6,b6; b1-a5,b5,a6,b6; a2-b5,a6,b6; b2-a6,b6; a3-b6； (b3 和 a4 在中间无碰撞)总计5+4+3+2+1=15
+    # 这里采用2个contact_sensor：a1-b4,a5,b5,a6,b6; b6-a3,b2,a2,b1; 5+4=9 60%的碰撞覆盖 
+    contact_sensor_1: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/Robot/a1", history_length=3, update_period=0.0, track_air_time=False, 
+        filter_prim_paths_expr=["/World/envs/env_.*/Robot/b4", "/World/envs/env_.*/Robot/a5", "/World/envs/env_.*/Robot/b5", "/World/envs/env_.*/Robot/a6", "/World/envs/env_.*/Robot/b6"]
+    )
+    contact_sensor_2: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/Robot/b6", history_length=3, update_period=0.0, track_air_time=False, 
+        filter_prim_paths_expr=["/World/envs/env_.*/Robot/a3", "/World/envs/env_.*/Robot/b2", "/World/envs/env_.*/Robot/a2", "/World/envs/env_.*/Robot/b1"]
     )
     num_dof = 6
     num_body = 12
@@ -109,12 +159,15 @@ class ZbotSEnv(DirectRLEnv):
         # print(self.zbots.find_joints("joint.*"))  # ([0, 1, 2, 3, 4, 5], ['joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6'])
         # self._end_dof_idx, _ = self.zbots.find_joints("joint6")
         # Get specific body indices
-        self._a_ids, _ = self._contact_sensor.find_bodies("a.*")
-        self._b_ids, _ = self._contact_sensor.find_bodies("b.*")
-        self._undesired_contact_body_ids, _ = self._contact_sensor.find_bodies(".*")
-        print(self._a_ids)
-        print(self._b_ids)
-        print(self._undesired_contact_body_ids)
+        print(self._contact_sensor)
+        print(self._contact_sensor_2)
+        # print(self._contact_sensor._num_envs)
+        # self._a_ids, _ = self._contact_sensor.find_bodies("a.*")
+        # self._b_ids, _ = self._contact_sensor.find_bodies("b.*")
+        # self._undesired_contact_body_ids, _ = self._contact_sensor.find_bodies(".*")
+        # print(self._a_ids)
+        # print(self._b_ids)
+        # print(self._contact_sensor.find_bodies(".*"))
         
         # self.dof_lower_limits: torch.Tensor = self.zbots.data.soft_joint_pos_limits[0, :, 0]
         # self.dof_upper_limits: torch.Tensor = self.zbots.data.soft_joint_pos_limits[0, :, 1]
@@ -134,8 +187,10 @@ class ZbotSEnv(DirectRLEnv):
         self.zbots = Articulation(self.cfg.robot_cfg)
         # add articultion to scene
         self.scene.articulations["zbots"] = self.zbots
-        self._contact_sensor = ContactSensor(self.cfg.contact_sensor)
+        self._contact_sensor = ContactSensor(self.cfg.contact_sensor_1)
         self.scene.sensors["contact_sensor"] = self._contact_sensor
+        self._contact_sensor_2 = ContactSensor(self.cfg.contact_sensor_2)
+        self.scene.sensors["contact_sensor_2"] = self._contact_sensor_2
         # add ground plane
         self.cfg.terrain.num_envs = self.scene.cfg.num_envs
         self.cfg.terrain.env_spacing = self.scene.cfg.env_spacing
@@ -269,8 +324,20 @@ class ZbotSEnv(DirectRLEnv):
         # out_of_direction = out_of_direction | (self.dead_count >= 100)
         out_of_direction = (self.dead_count >= 100)
         # print("out_of_direction: ", out_of_direction)
-        net_contact_forces = self._contact_sensor.data.net_forces_w_history
-        died = torch.any(torch.max(torch.norm(net_contact_forces[:, :, self._a_ids], dim=-1), dim=1)[0] > 1.0, dim=1)
+        # net_contact_forces = self._contact_sensor.data.net_forces_w_history
+        # print(net_contact_forces.size())
+        # filter_contact_forces_1 = self._contact_sensor.data.force_matrix_w
+        # filter_contact_forces_2 = self._contact_sensor_2.data.force_matrix_w
+        # print(filter_contact_forces_1.size())
+        # print(filter_contact_forces_1[2])
+        # print(filter_contact_forces_2.size())
+        # print(filter_contact_forces_2[2])
+        filter_contact_forces = torch.cat((self._contact_sensor.data.force_matrix_w, self._contact_sensor_2.data.force_matrix_w), dim=2)
+        print(filter_contact_forces.size())
+        print(filter_contact_forces[2])
+        # died = torch.any(torch.max(torch.norm(net_contact_forces[:, :, self._undesired_contact_body_ids], dim=-1), dim=1)[0] > 1.0, dim=1)
+        died = torch.any(torch.max(torch.norm(filter_contact_forces, dim=-1), dim=1)[0] > 1.0, dim=1)
+        
         print("died: ", died)
         out_of_direction = out_of_direction | died
         
