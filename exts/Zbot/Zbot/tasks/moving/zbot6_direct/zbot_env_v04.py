@@ -202,7 +202,7 @@ class ZbotSEnv(DirectRLEnv):
         # joint_sin-patten-generation_v
         t = self.sim_count.unsqueeze(1) * self.dt
         ctl_d = self.actions.view(self.num_envs, self.num_dof, 3)
-        vmax = 4*torch.pi
+        vmax = 2*torch.pi  # 4*torch.pi
         off = (ctl_d[...,0]+0)*vmax
         amp = (1 - torch.abs(ctl_d[...,0]))*(ctl_d[...,1]+0)*vmax
         phi = (ctl_d[...,2]+0)*2*torch.pi
@@ -361,12 +361,12 @@ def compute_rewards(
     # total_reward = torch.where(total_reward>1, reward_a, total_reward)
     # total_reward = 1.0*(body_states[:, 6, 0]+0.318) + 1.0*body_states[:, 6, 7] - 2*torch.abs(body_states[:, 6, 1])
     # # snake stand
-    r1 = torch.where(body_states[:, 6, 2] > 0.212, torch.ones_like(reset_terminated), torch.zeros_like(reset_terminated))
-    total_reward = 0.5*body_states[:, 6, 9] + 0.1*body_states[:, 6, 2] + r1*(body_states[:, 6, 1])
+    # r1 = torch.where(body_states[:, 6, 2] > 0.212, torch.ones_like(reset_terminated), torch.zeros_like(reset_terminated))
+    # total_reward = 0.5*body_states[:, 6, 9] + 0.1*body_states[:, 6, 2] + r1*(body_states[:, 6, 1])
     # total_reward = 0.5*body_states[:, 6, 9] + 1*body_states[:, 6, 2]
     # total_reward = torch.where(body_states[:, 6, 2] > 0.212, 0.4*torch.ones_like(total_reward)+ 0.3*body_states[:, 6, 8], total_reward)
-    # total_reward = body_states[:, 6, 2]
-    # total_reward = torch.where(body_states[:, 6, 2] > 0.212, torch.ones_like(total_reward)-0.1*body_states[:, 6, 9], torch.zeros_like(total_reward))
+    total_reward = body_states[:, 6, 2]
+    total_reward = torch.where(body_states[:, 6, 2] > 0.212, torch.ones_like(total_reward)-0.1*body_states[:, 6, 9], torch.zeros_like(total_reward))
     
     
     # adjust reward for wrong way reset agents
