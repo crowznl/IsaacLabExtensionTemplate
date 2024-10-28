@@ -72,59 +72,17 @@ class ZbotSEnvCfg(DirectRLEnvCfg):
 
     # robot
     robot_cfg: ArticulationCfg = ZBOT_D_6S_CFG.replace(prim_path="/World/envs/env_.*/Robot")
-    # contact_sensor: ContactSensorCfg = ContactSensorCfg(
-    #     prim_path="/World/envs/env_.*/Robot/.*", history_length=3, update_period=0.0, track_air_time=False
-    # )  # always reset
-    # contact_sensor: ContactSensorCfg = ContactSensorCfg(
-    #     prim_path="/World/envs/env_.*/Robot/a1", history_length=3, update_period=0.0, track_air_time=False
-    # )  # always reset, we need to filter out the ground, in current version, we can use the filter to select the object we focused
     """
     if we use filter_prim_paths_expr, then we can use the contactSensorData.force_matrix_w to check the contact force
     in the anymal case, they do not use the filter_prim_paths_expr, 
     they use contactSensorData.net_forces_w_history[:, :, self._base_id], 即通过检查base触碰地面来reset
     """
-    # contact_sensor: ContactSensorCfg = ContactSensorCfg(
-    #     prim_path="/World/envs/env_.*/Robot/.*", history_length=3, update_period=0.0, track_air_time=False, 
-    #     filter_prim_paths_expr=["/World/envs/env_.*/Robot/(a.*|b.*)"]
-    # )
-    # no error, but self._contact_sensor.data.force_matrix_w.size() = (64, 12, 1, 3)
-    
-    # contact_sensor: ContactSensorCfg = ContactSensorCfg(
-    #     prim_path="/World/envs/env_.*/Robot/.*", history_length=3, update_period=0.0, track_air_time=False, 
-    #     filter_prim_paths_expr=["/World/envs/env_.*/Robot/a.*", "/World/envs/env_.*/Robot/b.*"]
-    # )
-    # 2024-10-22 07:33:42 [8,033ms] [Error] [omni.physx.tensors.plugin] Filter pattern '/World/envs/env_*/Robot/a*' did not match the correct number of entries (expected 768, found 384)
-    # 2024-10-22 07:33:42 [8,034ms] [Error] [omni.physx.tensors.plugin] Filter pattern '/World/envs/env_*/Robot/b*' did not match the correct number of entries (expected 768, found 384)
-    # and self._contact_sensor.data.force_matrix_w.size() = (64, 12, 2, 3)
-    
-    # contact_sensor: ContactSensorCfg = ContactSensorCfg(
-    #     prim_path="/World/envs/env_.*/Robot/.*", history_length=3, update_period=0.0, track_air_time=False, 
-    #     filter_prim_paths_expr=["/World/envs/env_.*/Robot/a1", "/World/envs/env_.*/Robot/b1"]
-    # )
-    # 2024-10-22 09:38:52 [8,113ms] [Error] [omni.physx.tensors.plugin] Filter pattern '/World/envs/env_*/Robot/a1' did not match the correct number of entries (expected 768, found 64)
-    # 2024-10-22 09:38:52 [8,113ms] [Error] [omni.physx.tensors.plugin] Filter pattern '/World/envs/env_*/Robot/b1' did not match the correct number of entries (expected 768, found 64)
-    # and also self._contact_sensor.data.force_matrix_w.size() = (64, 12, 2, 3)
-
-    # contact_sensor: ContactSensorCfg = ContactSensorCfg(
-    #     prim_path="/World/envs/env_.*/Robot/a1", history_length=3, update_period=0.0, track_air_time=False, 
-    #     filter_prim_paths_expr=["/World/envs/env_.*/Robot/a.*", "/World/envs/env_.*/Robot/b.*"]
-    # )
-    # 2024-10-22 09:29:58 [8,210ms] [Error] [omni.physx.tensors.plugin] Filter pattern '/World/envs/env_*/Robot/a*' did not match the correct number of entries (expected 64, found 384)
-    # 2024-10-22 09:29:58 [8,211ms] [Error] [omni.physx.tensors.plugin] Filter pattern '/World/envs/env_*/Robot/b*' did not match the correct number of entries (expected 64, found 384)
-    # and self._contact_sensor.data.force_matrix_w.size() = (64, 1, 2, 3)
-
-    # contact_sensor: ContactSensorCfg = ContactSensorCfg(
-    #     prim_path="/World/envs/env_.*/Robot/b6", history_length=3, update_period=0.0, track_air_time=False, 
-    #     filter_prim_paths_expr=["/World/envs/env_.*/Robot/a1", "/World/envs/env_.*/Robot/b1"]
-    # )
-    # and self._contact_sensor.data.force_matrix_w.size() = (64, 1, 2, 3)
     """
     attention:
     1. when use `filter_prim_paths_expr=[]`, make sure the sensor primitive prim_path corresponds to a single primitive in that environment. 
         If the sensor primitive corresponds to multiple primitives, the filtering will not work as expected.
     2. don't use regex in `filter_prim_paths_expr=[]`, it will cause wierd results in `self._contact_sensor.data.force_matrix_w.size()`
     """
-    
     # 理论上 全覆盖需要分5个contact_sensor: a1-b4,a5,b5,a6,b6; b1-a5,b5,a6,b6; a2-b5,a6,b6; b2-a6,b6; a3-b6； (b3 和 a4 在中间无碰撞)总计5+4+3+2+1=15
     # 这里采用2个contact_sensor：a1-b4,a5,b5,a6,b6; b6-a3,b2,a2,b1; 5+4=9 60%的碰撞覆盖 
     contact_sensor_1: ContactSensorCfg = ContactSensorCfg(
@@ -134,6 +92,14 @@ class ZbotSEnvCfg(DirectRLEnvCfg):
     contact_sensor_2: ContactSensorCfg = ContactSensorCfg(
         prim_path="/World/envs/env_.*/Robot/b6", history_length=3, update_period=0.0, track_air_time=False, 
         filter_prim_paths_expr=["/World/envs/env_.*/Robot/a3", "/World/envs/env_.*/Robot/b2", "/World/envs/env_.*/Robot/a2", "/World/envs/env_.*/Robot/b1"]
+    )
+    contact_sensor_3: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/Robot/b1", history_length=3, update_period=0.0, track_air_time=False, 
+        filter_prim_paths_expr=["/World/envs/env_.*/Robot/a5", "/World/envs/env_.*/Robot/b5", "/World/envs/env_.*/Robot/a6"]
+    )
+    contact_sensor_4: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/Robot/a6", history_length=3, update_period=0.0, track_air_time=False, 
+        filter_prim_paths_expr=["/World/envs/env_.*/Robot/b2", "/World/envs/env_.*/Robot/a2"]
     )
     num_dof = 6
     num_body = 12
@@ -202,6 +168,10 @@ class ZbotSEnv(DirectRLEnv):
         self.scene.sensors["contact_sensor"] = self._contact_sensor
         self._contact_sensor_2 = ContactSensor(self.cfg.contact_sensor_2)
         self.scene.sensors["contact_sensor_2"] = self._contact_sensor_2
+        self._contact_sensor_3 = ContactSensor(self.cfg.contact_sensor_3)
+        self.scene.sensors["contact_sensor_3"] = self._contact_sensor_3
+        self._contact_sensor_4 = ContactSensor(self.cfg.contact_sensor_4)
+        self.scene.sensors["contact_sensor_4"] = self._contact_sensor_4
         # add ground plane
         self.cfg.terrain.num_envs = self.scene.cfg.num_envs
         self.cfg.terrain.env_spacing = self.scene.cfg.env_spacing
@@ -343,13 +313,16 @@ class ZbotSEnv(DirectRLEnv):
         # print(filter_contact_forces_1[2])
         # print(filter_contact_forces_2.size())
         # print(filter_contact_forces_2[2])
-        filter_contact_forces = torch.cat((self._contact_sensor.data.force_matrix_w, self._contact_sensor_2.data.force_matrix_w), dim=2)
-        print(filter_contact_forces.size())
-        print(filter_contact_forces[2])
+        filter_contact_forces = torch.cat((self._contact_sensor.data.force_matrix_w, 
+                                           self._contact_sensor_2.data.force_matrix_w, 
+                                           self._contact_sensor_3.data.force_matrix_w, 
+                                           self._contact_sensor_4.data.force_matrix_w), dim=2)
+        # print(filter_contact_forces.size())
+        # print(filter_contact_forces[2])
         # died = torch.any(torch.max(torch.norm(net_contact_forces[:, :, self._undesired_contact_body_ids], dim=-1), dim=1)[0] > 1.0, dim=1)
         died = torch.any(torch.max(torch.norm(filter_contact_forces, dim=-1), dim=1)[0] > 1.0, dim=1)
         
-        print("died: ", died)
+        # print("died: ", died)
         out_of_direction = out_of_direction | died
         
         return out_of_direction, time_out
@@ -388,10 +361,12 @@ def compute_rewards(
     # total_reward = torch.where(total_reward>1, reward_a, total_reward)
     # total_reward = 1.0*(body_states[:, 6, 0]+0.318) + 1.0*body_states[:, 6, 7] - 2*torch.abs(body_states[:, 6, 1])
     # # snake stand
-    # r1 = torch.where(body_states[:, 6, 2] > 0.212, torch.ones_like(reset_terminated), torch.zeros_like(reset_terminated))
-    # total_reward = 0.5*body_states[:, 6, 9] + 0.1*body_states[:, 6, 2] + r1*(body_states[:, 6, 1])
-    total_reward = 0.5*body_states[:, 6, 9] + 1*body_states[:, 6, 2]
-    total_reward = torch.where(body_states[:, 6, 2] > 0.212, 0.4*torch.ones_like(total_reward)+ body_states[:, 6, 1], total_reward)
+    r1 = torch.where(body_states[:, 6, 2] > 0.212, torch.ones_like(reset_terminated), torch.zeros_like(reset_terminated))
+    total_reward = 0.5*body_states[:, 6, 9] + 0.1*body_states[:, 6, 2] + r1*(body_states[:, 6, 1])
+    # total_reward = 0.5*body_states[:, 6, 9] + 1*body_states[:, 6, 2]
+    # total_reward = torch.where(body_states[:, 6, 2] > 0.212, 0.4*torch.ones_like(total_reward)+ 0.3*body_states[:, 6, 8], total_reward)
+    # total_reward = body_states[:, 6, 2]
+    # total_reward = torch.where(body_states[:, 6, 2] > 0.212, torch.ones_like(total_reward)-0.1*body_states[:, 6, 9], torch.zeros_like(total_reward))
     
     
     # adjust reward for wrong way reset agents
