@@ -18,6 +18,7 @@ from omni.isaac.lab.sim import SimulationCfg
 from omni.isaac.lab.terrains import TerrainImporterCfg 
 from omni.isaac.lab.utils import configclass
 
+from gymnasium.spaces import Box
 
 @configclass
 class ZbotSEnvCfg(DirectRLEnvCfg):
@@ -36,11 +37,14 @@ class ZbotSEnvCfg(DirectRLEnvCfg):
     """
     decimation = 2
     episode_length_s = 32
-    num_actions = 3*6
-    num_observations = 25
-    num_states = 0
-
-    action_clip = 1.0
+    
+    # num_actions = 3*6  # deprecated
+    # num_observations = 25  # deprecated
+    # num_states = 0  # deprecated
+    # action_clip = 1.0
+    action_space = Box(low=-1.0, high=1.0, shape=(18,), dtype=torch.float32)
+    observation_space = 25
+    state_space = 0
 
     # simulation  # use_fabric=True the GUI will not update
     sim: SimulationCfg = SimulationCfg(
@@ -184,9 +188,13 @@ class ZbotSEnv(DirectRLEnv):
         light_cfg.func("/World/Light", light_cfg)
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
+        print(self.action_space)
+        
         self.actions = actions.clone()
-        # clip the actions
-        actions = torch.clamp(actions, -self.cfg.action_clip, self.cfg.action_clip)
+        print('a: ', actions[0], actions.size())
+        print('sa: ', self.actions[0], self.actions.size())
+        # clip the actions # forget to add "self." !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        # actions = torch.clamp(actions, -self.cfg.action_clip, self.cfg.action_clip)
         # print('a: ', actions[0], actions.size())  # [64, 18]
         
         # joint_sin-patten-generation_pos

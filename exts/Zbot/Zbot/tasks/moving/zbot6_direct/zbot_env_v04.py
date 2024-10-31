@@ -36,9 +36,13 @@ class ZbotSEnvCfg(DirectRLEnvCfg):
     """
     decimation = 2
     episode_length_s = 32
-    num_actions = 3*6
-    num_observations = 25
-    num_states = 0
+    
+    # num_actions = 3*6  # deprecated
+    # num_observations = 25  # deprecated
+    # num_states = 0  # deprecated
+    action_space = 3*6
+    observation_space = 25
+    state_space = 0  # 新版本向下兼容有问题，有num_states也报错，必须得加上
 
     action_clip = 1.0
 
@@ -184,10 +188,15 @@ class ZbotSEnv(DirectRLEnv):
         light_cfg.func("/World/Light", light_cfg)
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
+        # print(self.action_space)  # Box(-inf, inf, (64, 18), float32)
+        
         self.actions = actions.clone()
         # clip the actions
         actions = torch.clamp(actions, -self.cfg.action_clip, self.cfg.action_clip)
         # print('a: ', actions[0], actions.size())  # [64, 18]
+        
+        # 没起作用 forget to add "self." !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        # print('sa: ', self.actions[0], self.actions.size())  # [64, 18]
         
         # joint_sin-patten-generation_pos
         # t = self.sim_count.unsqueeze(1) * self.dt
