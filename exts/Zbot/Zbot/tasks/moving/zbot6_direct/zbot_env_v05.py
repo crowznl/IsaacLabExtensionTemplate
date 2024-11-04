@@ -42,7 +42,8 @@ class ZbotSEnvCfg(DirectRLEnvCfg):
     # num_observations = 25  # deprecated
     # num_states = 0  # deprecated
     # action_clip = 1.0
-    action_space = Box(low=-1.0, high=1.0, shape=(18,), dtype=torch.float32)
+    # Box() Cannot interpret 'torch.float32' as a data type use np.float32 instead
+    action_space = Box(low=-1.0, high=1.0, shape=(18,)) 
     observation_space = 25
     state_space = 0
 
@@ -126,12 +127,10 @@ class ZbotSEnv(DirectRLEnv):
         super().__init__(cfg, render_mode, **kwargs)
 
         self.dt = self.cfg.sim.dt
-        self.num_dof = self.cfg.num_dof
-        self.num_body = self.cfg.num_body
         self.targets = torch.tensor([10, 0, 0], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
         self.targets += self.scene.env_origins
         # 重复最后一维 12 次
-        self.e_origins = self.scene.env_origins.unsqueeze(1).repeat(1, self.num_body, 1)
+        self.e_origins = self.scene.env_origins.unsqueeze(1).repeat(1, self.cfg.num_body, 1)
         # print(self.scene.env_origins)
         # print(self.e_origins)
         
@@ -142,13 +141,8 @@ class ZbotSEnv(DirectRLEnv):
         # Get specific body indices
         print(self._contact_sensor)
         print(self._contact_sensor_2)
-        # print(self._contact_sensor._num_envs)
-        # self._a_ids, _ = self._contact_sensor.find_bodies("a.*")
-        # self._b_ids, _ = self._contact_sensor.find_bodies("b.*")
-        # self._undesired_contact_body_ids, _ = self._contact_sensor.find_bodies(".*")
-        # print(self._a_ids)
-        # print(self._b_ids)
-        # print(self._contact_sensor.find_bodies(".*"))
+        # print('sa_in: ', self.actions[0], self.actions.size())  # all 0., torch.Size([64, 18])
+        # __init__ -> self._configure_gym_env_spaces() -> self.actions = sample_space(, fill_value=0)
         
         # self.dof_lower_limits: torch.Tensor = self.zbots.data.soft_joint_pos_limits[0, :, 0]
         # self.dof_upper_limits: torch.Tensor = self.zbots.data.soft_joint_pos_limits[0, :, 1]
@@ -188,8 +182,9 @@ class ZbotSEnv(DirectRLEnv):
         light_cfg.func("/World/Light", light_cfg)
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
-        print(self.action_space)
-        
+        print(self.action_space)  # Box(-1.0, 1.0, (64, 18), float32)
+        # print(self.cfg.action_noise_model)  # None
+
         self.actions = actions.clone()
         print('a: ', actions[0], actions.size())
         print('sa: ', self.actions[0], self.actions.size())
@@ -209,7 +204,7 @@ class ZbotSEnv(DirectRLEnv):
 
         # joint_sin-patten-generation_v
         t = self.sim_count.unsqueeze(1) * self.dt
-        ctl_d = self.actions.view(self.num_envs, self.num_dof, 3)
+        ctl_d = self.actions.view(self.num_envs, self.cfg.num_dof, 3)
         vmax = 2*torch.pi  # 4*torch.pi
         off = (ctl_d[...,0]+0)*vmax
         amp = (1 - torch.abs(ctl_d[...,0]))*(ctl_d[...,1]+0)*vmax
