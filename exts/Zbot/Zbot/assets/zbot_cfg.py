@@ -121,7 +121,8 @@ ZBOT_D_8S_CFG = ArticulationCfg(
     ),
     init_state=ArticulationCfg.InitialStateCfg(
         pos=(0.0, 0.0, 0.05),
-        rot=(1.0, 0.0, 0.0, 0.0),  # (w, x, y, z)
+        rot=(0.707, 0.0, 0.707, 0.0),
+        # rot=(1.0, 0.0, 0.0, 0.0),  # (w, x, y, z)
         joint_pos={
             "joint[1-8]": 0.0,
         },

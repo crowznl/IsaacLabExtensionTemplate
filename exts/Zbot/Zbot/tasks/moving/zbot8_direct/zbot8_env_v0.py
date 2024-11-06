@@ -24,7 +24,35 @@ from gymnasium.spaces import Box
 class ZbotSEnvCfg(DirectRLEnvCfg):
     # robot
     robot_cfg: ArticulationCfg = ZBOT_D_8S_CFG.replace(prim_path="/World/envs/env_.*/Robot")
-
+    contact_sensor_1: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/Robot/a1", history_length=3, update_period=0.0, track_air_time=False, 
+        filter_prim_paths_expr=["/World/envs/env_.*/Robot/b4", 
+                                "/World/envs/env_.*/Robot/a5", "/World/envs/env_.*/Robot/b5", 
+                                "/World/envs/env_.*/Robot/a6", "/World/envs/env_.*/Robot/b6", 
+                                "/World/envs/env_.*/Robot/a7", "/World/envs/env_.*/Robot/b7", 
+                                "/World/envs/env_.*/Robot/a8", "/World/envs/env_.*/Robot/b8"]
+    )
+    contact_sensor_2: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/Robot/b8", history_length=3, update_period=0.0, track_air_time=False, 
+        filter_prim_paths_expr=["/World/envs/env_.*/Robot/a5", 
+                                "/World/envs/env_.*/Robot/b4", "/World/envs/env_.*/Robot/a4", 
+                                "/World/envs/env_.*/Robot/b3", "/World/envs/env_.*/Robot/a3", 
+                                "/World/envs/env_.*/Robot/b2", "/World/envs/env_.*/Robot/a2", 
+                                "/World/envs/env_.*/Robot/b1"]
+    )
+    contact_sensor_3: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/Robot/b1", history_length=3, update_period=0.0, track_air_time=False, 
+        filter_prim_paths_expr=["/World/envs/env_.*/Robot/a5", "/World/envs/env_.*/Robot/b5", 
+                                "/World/envs/env_.*/Robot/a6", "/World/envs/env_.*/Robot/b6", 
+                                "/World/envs/env_.*/Robot/a7", "/World/envs/env_.*/Robot/b7", 
+                                "/World/envs/env_.*/Robot/a8"]
+    )
+    contact_sensor_4: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/Robot/a6", history_length=3, update_period=0.0, track_air_time=False, 
+        filter_prim_paths_expr=["/World/envs/env_.*/Robot/b4", "/World/envs/env_.*/Robot/a4", 
+                                "/World/envs/env_.*/Robot/b3", "/World/envs/env_.*/Robot/a3", 
+                                "/World/envs/env_.*/Robot/b2", "/World/envs/env_.*/Robot/a2"]
+    )
     num_dof = 8
     num_body = 2*8
     
@@ -124,14 +152,14 @@ class ZbotSEnv(DirectRLEnv):
         self.zbots = Articulation(self.cfg.robot_cfg)
         # add articultion to scene
         self.scene.articulations["zbots"] = self.zbots
-        # self._contact_sensor = ContactSensor(self.cfg.contact_sensor_1)
-        # self.scene.sensors["contact_sensor"] = self._contact_sensor
-        # self._contact_sensor_2 = ContactSensor(self.cfg.contact_sensor_2)
-        # self.scene.sensors["contact_sensor_2"] = self._contact_sensor_2
-        # self._contact_sensor_3 = ContactSensor(self.cfg.contact_sensor_3)
-        # self.scene.sensors["contact_sensor_3"] = self._contact_sensor_3
-        # self._contact_sensor_4 = ContactSensor(self.cfg.contact_sensor_4)
-        # self.scene.sensors["contact_sensor_4"] = self._contact_sensor_4
+        self._contact_sensor = ContactSensor(self.cfg.contact_sensor_1)
+        self.scene.sensors["contact_sensor"] = self._contact_sensor
+        self._contact_sensor_2 = ContactSensor(self.cfg.contact_sensor_2)
+        self.scene.sensors["contact_sensor_2"] = self._contact_sensor_2
+        self._contact_sensor_3 = ContactSensor(self.cfg.contact_sensor_3)
+        self.scene.sensors["contact_sensor_3"] = self._contact_sensor_3
+        self._contact_sensor_4 = ContactSensor(self.cfg.contact_sensor_4)
+        self.scene.sensors["contact_sensor_4"] = self._contact_sensor_4
         # add ground plane
         self.cfg.terrain.num_envs = self.scene.cfg.num_envs
         self.cfg.terrain.env_spacing = self.scene.cfg.env_spacing
@@ -218,13 +246,13 @@ class ZbotSEnv(DirectRLEnv):
         
         out_of_direction = (self.dead_count >= 100)
         
-        # filter_contact_forces = torch.cat((self._contact_sensor.data.force_matrix_w, 
-        #                                    self._contact_sensor_2.data.force_matrix_w, 
-        #                                    self._contact_sensor_3.data.force_matrix_w, 
-        #                                    self._contact_sensor_4.data.force_matrix_w), dim=2)
-        # died = torch.any(torch.max(torch.norm(filter_contact_forces, dim=-1), dim=1)[0] > 1.0, dim=1)
-        # # print("died: ", died)
-        # out_of_direction = out_of_direction | died
+        filter_contact_forces = torch.cat((self._contact_sensor.data.force_matrix_w, 
+                                           self._contact_sensor_2.data.force_matrix_w, 
+                                           self._contact_sensor_3.data.force_matrix_w, 
+                                           self._contact_sensor_4.data.force_matrix_w), dim=2)
+        died = torch.any(torch.max(torch.norm(filter_contact_forces, dim=-1), dim=1)[0] > 1.0, dim=1)
+        # print("died: ", died)
+        out_of_direction = out_of_direction | died
         
         return out_of_direction, time_out
 
