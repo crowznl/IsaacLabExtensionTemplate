@@ -101,7 +101,7 @@ ZBOT_D_6S_CFG = ArticulationCfg(
 
 ZBOT_D_8S_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
-        usd_path=usd_dir_path + robot_usd,
+        usd_path=usd_dir_path + robot_8_usd,
         activate_contact_sensors=True,  # True
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             disable_gravity=False,
