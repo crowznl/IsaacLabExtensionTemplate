@@ -46,7 +46,7 @@ from omni.isaac.lab.sim import SimulationContext
 ##
 # Pre-defined configs
 ##
-from Zbot.assets import ZBOT_D_6S_CFG
+from Zbot.assets import ZBOT_D_6S_CFG, ZBOT_D_6W_CFG
 
 def design_scene() -> tuple[dict, list[list[float]]]:
     """Designs the scene."""
@@ -59,14 +59,15 @@ def design_scene() -> tuple[dict, list[list[float]]]:
     
     # Create separate groups called "Origin1", "Origin2"
     # Each group will have a robot in it
-    origins = [[0.0, 0.0, 0.0], [-1.0, 0.0, 0.0]]
+    origins = [[0.0, 0.0, 0.0], [-2.0, 0.0, 0.0]]
     # Origin 1
     prim_utils.create_prim("/World/Origin1", "Xform", translation=origins[0])
     # Origin 2
     prim_utils.create_prim("/World/Origin2", "Xform", translation=origins[1])
 
     # Articulation
-    zbot_cfg = ZBOT_D_6S_CFG.copy()
+    # zbot_cfg = ZBOT_D_6S_CFG.copy()
+    zbot_cfg = ZBOT_D_6W_CFG.copy()
     zbot_cfg.prim_path = "/World/Origin.*/Robot"
     zbot6s = Articulation(cfg=zbot_cfg)
 
@@ -84,10 +85,11 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict[str, Articula
     # Define simulation stepping
     sim_dt = sim.get_physics_dt()
     count = 0
+    reset_max_steps = 10 # 500
     # Simulation loop
     while simulation_app.is_running():
         # Reset
-        if count % 500 == 0:
+        if count % reset_max_steps == 0:
             # reset counter
             count = 0
             # reset the scene entities
@@ -96,21 +98,24 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict[str, Articula
             # if this is not done, then the robots will be spawned at the (0, 0, 0) of the simulation world
             root_state = robot.data.default_root_state.clone()
             root_state[:, :3] += origins
+            print(root_state)
             robot.write_root_state_to_sim(root_state)
             # set joint positions with some noise
             joint_pos, joint_vel = robot.data.default_joint_pos.clone(), robot.data.default_joint_vel.clone()
-            joint_pos += torch.rand_like(joint_pos) * 0.1
+            print(joint_pos)
+            print(joint_vel)
+            # joint_pos += torch.rand_like(joint_pos) * 0.1
             robot.write_joint_state_to_sim(joint_pos, joint_vel)
             # clear internal buffers
             robot.reset()
             print("[INFO]: Resetting robot state...")
-        # Apply random action
-        # -- generate random joint efforts
-        efforts = torch.randn_like(robot.data.joint_pos) * 5.0
-        # -- apply action to the robot
-        robot.set_joint_effort_target(efforts)
-        # -- write data to sim
-        robot.write_data_to_sim()
+        # # Apply random action
+        # # -- generate random joint efforts
+        # efforts = torch.randn_like(robot.data.joint_pos) * 5.0
+        # # -- apply action to the robot
+        # robot.set_joint_effort_target(efforts)
+        # # -- write data to sim
+        # robot.write_data_to_sim()
         # Perform step
         sim.step()
         # Increment counter

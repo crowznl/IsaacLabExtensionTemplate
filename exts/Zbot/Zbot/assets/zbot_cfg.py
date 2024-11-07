@@ -33,6 +33,7 @@ usd_dir_path = ISAACLAB_ASSETS_DATA_DIR
                     # self._num_envs = len(self._parent_prims)
 robot_usd = "zbot_6s_v03.usd"
 robot_8_usd = "zbot_8s_v0.usd"
+robot_6w_usd = "zbot_6w_v0.usd"
 
 ##
 # Configuration
@@ -133,6 +134,56 @@ ZBOT_D_8S_CFG = ArticulationCfg(
     soft_joint_pos_limit_factor=1.0,
     actuators={
         "zbot_eight": ImplicitActuatorCfg(
+            joint_names_expr=["joint.*"],
+            effort_limit=20,
+            velocity_limit=10,
+            stiffness=20,
+            damping=0.5,
+            friction=0.0,
+        ),
+    },
+)
+
+ZBOT_D_6W_CFG = ArticulationCfg(
+    # prim_path="{ENV_REGEX_NS}/Robot",
+    spawn=sim_utils.UsdFileCfg(
+        usd_path=usd_dir_path + robot_6w_usd,
+        activate_contact_sensors=True,  # True
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(
+            disable_gravity=False,
+            retain_accelerations=False,
+            linear_damping=0.0,
+            angular_damping=0.0,
+            max_linear_velocity=1000.0,
+            max_angular_velocity=1000.0,
+            max_depenetration_velocity=1.0,
+        ),
+        articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+            enabled_self_collisions=True,  # True
+            solver_position_iteration_count=4, 
+            solver_velocity_iteration_count=0
+        ),
+        # collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.02, rest_offset=0.0),
+    ),
+    init_state=ArticulationCfg.InitialStateCfg(
+        pos=(0.0, 0.0, 0.05),
+        rot=(1.0, 0.0, 0.0, 0.0),  # (w, x, y, z)
+        joint_pos={
+            "joint1": 0.0,
+            "joint2": 0.785398,  # 45 degrees
+            "joint3": -1.570796,
+            "joint4": 1.570796,
+            "joint5": -0.785398,
+            "joint6": 0.0,
+        },
+        joint_vel={
+            "joint[1-6]": 0.0,
+        },
+    ),
+    soft_joint_pos_limit_factor=1.0,
+    actuators={
+        "zbot_six_w": ImplicitActuatorCfg(
+            # joint_names_expr=[".*joint"],
             joint_names_expr=["joint.*"],
             effort_limit=20,
             velocity_limit=10,

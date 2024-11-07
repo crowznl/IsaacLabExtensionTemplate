@@ -109,7 +109,7 @@ class ZbotSEnvCfg(DirectRLEnvCfg):
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=2.0, replicate_physics=True)
 
     # reset
-    stand_height = 0.316
+    stand_height = 0.32
 
     # reward scales
 
@@ -231,6 +231,7 @@ class ZbotSEnv(DirectRLEnv):
     def _get_rewards(self) -> torch.Tensor:
         total_reward = compute_rewards(
             self.body_states,
+            self.joint_pos,
             self.reset_terminated,
             self.cfg.stand_height,
         )
@@ -280,6 +281,7 @@ class ZbotSEnv(DirectRLEnv):
 @torch.jit.script
 def compute_rewards(
     body_states: torch.Tensor,
+    joint_pos: torch.Tensor,
     reset_terminated: torch.Tensor,
     stand_height: float = 0.212,
 ):
@@ -294,8 +296,21 @@ def compute_rewards(
     # total_reward = 0.5*body_states[:, 6, 9] + 1*body_states[:, 6, 2]
     # total_reward = torch.where(body_states[:, 6, 2] > 0.212, 0.4*torch.ones_like(total_reward)+ 0.3*body_states[:, 6, 8], total_reward)
     total_reward = body_states[:, 8, 2]
-    total_reward = torch.where(body_states[:, 8, 2] > stand_height, torch.ones_like(total_reward)-0.1*body_states[:, 8, 9], torch.zeros_like(total_reward))
+    # total_reward = torch.where(body_states[:, 8, 2] > stand_height, torch.ones_like(total_reward)-0.1*body_states[:, 8, 9], torch.zeros_like(total_reward))
     
+    # it will try to be stand_height
+    # total_reward = torch.where(body_states[:, 8, 2] > stand_height, total_reward-0.1*body_states[:, 8, 9], total_reward)
+    # total_reward = torch.where(body_states[:, 8, 2] > stand_height, total_reward-0.1*body_states[:, 8, 9]-body_states[:, 0, 2]-body_states[:, 15, 2], total_reward)
+    
+    # total_reward = torch.where(body_states[:, 8, 2] > stand_height, 
+    #                            2*torch.ones_like(total_reward)-0.1*body_states[:, 8, 9]-0.1*torch.abs(joint_pos[:, 0])-0.1*torch.abs(joint_pos[:, 7]), 
+    #                            total_reward)
+    # total_reward = torch.where(body_states[:, 8, 2] > stand_height, 
+    #                            2*torch.ones_like(total_reward), 
+    #                            total_reward+0.1*body_states[:, 8, 9])
+    total_reward = torch.where(body_states[:, 8, 2] > stand_height, 
+                               2*torch.ones_like(total_reward) + body_states[:, 8, 1], 
+                               total_reward+0.1*body_states[:, 8, 9])
     
     # adjust reward for wrong way reset agents
     total_reward = torch.where(reset_terminated, -100*torch.zeros_like(total_reward), total_reward)
