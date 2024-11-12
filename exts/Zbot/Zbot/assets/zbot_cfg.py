@@ -93,8 +93,8 @@ ZBOT_D_6S_CFG = ArticulationCfg(
             joint_names_expr=["joint.*"],
             effort_limit=20,
             velocity_limit=10,
-            stiffness=20,
-            damping=0.5,
+            stiffness=20,  # kp
+            damping=0.5,  # kd
             friction=0.0,
         ),
     },
