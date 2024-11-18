@@ -166,7 +166,7 @@ ZBOT_D_6W_CFG = ArticulationCfg(
         # collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.02, rest_offset=0.0),
     ),
     init_state=ArticulationCfg.InitialStateCfg(
-        pos=(0.0, 0.0, 0.05),
+        pos=(0.0, 0.0, 0.055),
         rot=(1.0, 0.0, 0.0, 0.0),  # (w, x, y, z)
         joint_pos={
             "joint1": 0.0,

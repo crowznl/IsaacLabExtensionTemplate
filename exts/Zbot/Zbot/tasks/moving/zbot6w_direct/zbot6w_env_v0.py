@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import torch
 
-from Zbot.assets import ZBOT_D_8S_CFG
+from Zbot.assets import ZBOT_D_6W_CFG
 
 import omni.isaac.lab.sim as sim_utils
 from omni.isaac.lab.assets import Articulation, ArticulationCfg
@@ -23,38 +23,12 @@ from gymnasium.spaces import Box
 @configclass
 class ZbotWEnvCfg(DirectRLEnvCfg):
     # robot
-    robot_cfg: ArticulationCfg = ZBOT_D_8S_CFG.replace(prim_path="/World/envs/env_.*/Robot")
+    robot_cfg: ArticulationCfg = ZBOT_D_6W_CFG.replace(prim_path="/World/envs/env_.*/Robot")
     contact_sensor_1: ContactSensorCfg = ContactSensorCfg(
-        prim_path="/World/envs/env_.*/Robot/a1", history_length=3, update_period=0.0, track_air_time=False, 
-        filter_prim_paths_expr=["/World/envs/env_.*/Robot/b4", 
-                                "/World/envs/env_.*/Robot/a5", "/World/envs/env_.*/Robot/b5", 
-                                "/World/envs/env_.*/Robot/a6", "/World/envs/env_.*/Robot/b6", 
-                                "/World/envs/env_.*/Robot/a7", "/World/envs/env_.*/Robot/b7", 
-                                "/World/envs/env_.*/Robot/a8", "/World/envs/env_.*/Robot/b8"]
-    )
-    contact_sensor_2: ContactSensorCfg = ContactSensorCfg(
-        prim_path="/World/envs/env_.*/Robot/b8", history_length=3, update_period=0.0, track_air_time=False, 
-        filter_prim_paths_expr=["/World/envs/env_.*/Robot/a5", 
-                                "/World/envs/env_.*/Robot/b4", "/World/envs/env_.*/Robot/a4", 
-                                "/World/envs/env_.*/Robot/b3", "/World/envs/env_.*/Robot/a3", 
-                                "/World/envs/env_.*/Robot/b2", "/World/envs/env_.*/Robot/a2", 
-                                "/World/envs/env_.*/Robot/b1"]
-    )
-    contact_sensor_3: ContactSensorCfg = ContactSensorCfg(
-        prim_path="/World/envs/env_.*/Robot/b1", history_length=3, update_period=0.0, track_air_time=False, 
-        filter_prim_paths_expr=["/World/envs/env_.*/Robot/a5", "/World/envs/env_.*/Robot/b5", 
-                                "/World/envs/env_.*/Robot/a6", "/World/envs/env_.*/Robot/b6", 
-                                "/World/envs/env_.*/Robot/a7", "/World/envs/env_.*/Robot/b7", 
-                                "/World/envs/env_.*/Robot/a8"]
-    )
-    contact_sensor_4: ContactSensorCfg = ContactSensorCfg(
-        prim_path="/World/envs/env_.*/Robot/a6", history_length=3, update_period=0.0, track_air_time=False, 
-        filter_prim_paths_expr=["/World/envs/env_.*/Robot/b4", "/World/envs/env_.*/Robot/a4", 
-                                "/World/envs/env_.*/Robot/b3", "/World/envs/env_.*/Robot/a3", 
-                                "/World/envs/env_.*/Robot/b2", "/World/envs/env_.*/Robot/a2"]
-    )
-    num_dof = 8
-    num_body = 2*8
+        prim_path="/World/envs/env_.*/Robot/(a.*|b.*)", history_length=3, update_period=0.0, track_air_time=False)
+    
+    num_dof = 6
+    num_body = 6
     
     # env
     """
@@ -74,7 +48,7 @@ class ZbotWEnvCfg(DirectRLEnvCfg):
 
     action_space = Box(low=-1.0, high=1.0, shape=(3*num_dof,)) 
     action_clip = 1.0
-    observation_space = 48
+    observation_space = 36
     state_space = 0
 
     # simulation  # use_fabric=True the GUI will not update
@@ -109,7 +83,7 @@ class ZbotWEnvCfg(DirectRLEnvCfg):
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=2.0, replicate_physics=True)
 
     # reset
-    stand_height = 0.3
+    # stand_height = 0.3
 
     # reward scales
 
@@ -129,10 +103,11 @@ class ZbotWEnv(DirectRLEnv):
         # print(self.e_origins)
         
         # Get specific body indices
-        # print(self._contact_sensor)
-        # print(self._contact_sensor_2)
-        # print('sa_in: ', self.actions[0], self.actions.size())  # all 0., torch.Size([64, 18])
-        # __init__ -> self._configure_gym_env_spaces() -> self.actions = sample_space(, fill_value=0)
+        print(self._contact_sensor)
+        self._joint_idx, _ = self.zbots.find_joints("joint.*")
+        self._a_idx, _ = self.zbots.find_bodies("a.*")
+        print(self.zbots.find_bodies(".*"))
+        print(self.zbots.find_joints(".*"))
         
         
         m = 2*torch.pi
@@ -154,13 +129,6 @@ class ZbotWEnv(DirectRLEnv):
         # add articultion to scene
         self.scene.articulations["zbots"] = self.zbots
         self._contact_sensor = ContactSensor(self.cfg.contact_sensor_1)
-        self.scene.sensors["contact_sensor"] = self._contact_sensor
-        self._contact_sensor_2 = ContactSensor(self.cfg.contact_sensor_2)
-        self.scene.sensors["contact_sensor_2"] = self._contact_sensor_2
-        self._contact_sensor_3 = ContactSensor(self.cfg.contact_sensor_3)
-        self.scene.sensors["contact_sensor_3"] = self._contact_sensor_3
-        self._contact_sensor_4 = ContactSensor(self.cfg.contact_sensor_4)
-        self.scene.sensors["contact_sensor_4"] = self._contact_sensor_4
         # add ground plane
         self.cfg.terrain.num_envs = self.scene.cfg.num_envs
         self.cfg.terrain.env_spacing = self.scene.cfg.env_spacing
@@ -201,9 +169,9 @@ class ZbotWEnv(DirectRLEnv):
         self.zbots.set_joint_position_target(self.pos_d)
 
     def _compute_intermediate_values(self):
-        self.joint_pos = self.zbots.data.joint_pos
-        self.joint_vel = self.zbots.data.joint_vel
-        self.body_quat = self.zbots.data.body_quat_w[:, 0::2, :]
+        self.joint_pos = self.zbots.data.joint_pos[:, self._joint_idx]
+        self.joint_vel = self.zbots.data.joint_vel[:, self._joint_idx]
+        self.body_quat = self.zbots.data.body_quat_w[:, self._a_idx, :]
 
         (
             self.body_pos,
@@ -212,8 +180,8 @@ class ZbotWEnv(DirectRLEnv):
             self.to_target
         ) = compute_intermediate_values(
             self.e_origins,
-            self.zbots.data.body_pos_w,
-            self.zbots.data.body_state_w,
+            self.zbots.data.body_pos_w[:, self._a_idx],
+            self.zbots.data.body_state_w[:, self._a_idx],
             self.targets,
         )
 
@@ -223,7 +191,7 @@ class ZbotWEnv(DirectRLEnv):
                 self.body_quat.reshape(self.scene.cfg.num_envs, -1),
                 self.joint_vel,
                 self.joint_pos,
-                # 4*8+8+8
+                # 4*6+6+6
             ),
             dim=-1,
         )
@@ -242,17 +210,14 @@ class ZbotWEnv(DirectRLEnv):
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
 
         self._compute_intermediate_values()
-        alive = torch.norm(self.body_states[:, 8, -6:], p=2, dim=-1)
+        alive = torch.norm(self.body_states[:, 3, -6:], p=2, dim=-1)
         self.dead_count = torch.where(alive < 0.1 , self.dead_count + 1, self.dead_count)
 
         time_out = self.episode_length_buf >= self.max_episode_length - 1
         
         out_of_direction = (self.dead_count >= 50)
         
-        filter_contact_forces = torch.cat((self._contact_sensor.data.force_matrix_w, 
-                                           self._contact_sensor_2.data.force_matrix_w, 
-                                           self._contact_sensor_3.data.force_matrix_w, 
-                                           self._contact_sensor_4.data.force_matrix_w), dim=2)
+        filter_contact_forces = self._contact_sensor.data.force_matrix_w
         died = torch.any(torch.max(torch.norm(filter_contact_forces, dim=-1), dim=1)[0] > 1.0, dim=1)
         # print("died: ", died)
         out_of_direction = out_of_direction | died
@@ -330,7 +295,7 @@ def compute_rewards(
     # total_reward = torch.where(body_states[:, 8, 2] > stand_height, 
     #                            total_reward + body_states[:, 8, 1], 
     #                            total_reward)
-    total_reward = 0.5*body_states[:, 8, 2]+0.1*body_states[:, 8, 9]
+    # total_reward = 0.5*body_states[:, 8, 2]+0.1*body_states[:, 8, 9]
     # total_reward = torch.where(body_states[:, 8, 2] > stand_height, 
     #                            10*total_reward + body_states[:, 8, 1], 
     #                            total_reward)
@@ -340,9 +305,11 @@ def compute_rewards(
     # total_reward = torch.where(body_states[:, 8, 2] > stand_height, 
     #                            total_reward + body_states[:, 8, 1], 
     #                            total_reward)
-    total_reward = torch.where(body_states[:, 8, 2] > stand_height, 
-                               total_reward + torch.ones_like(total_reward) + body_states[:, 8, 1], 
-                               total_reward)
+    # total_reward = torch.where(body_states[:, 8, 2] > stand_height, 
+    #                            total_reward + torch.ones_like(total_reward) + body_states[:, 8, 1], 
+    #                            total_reward)
+    
+    total_reward = 0.5*body_states[:, 3, 0]+0.1*body_states[:, 3, 7]
     
     # adjust reward for wrong way reset agents
     total_reward = torch.where(reset_terminated, -100*torch.zeros_like(total_reward), total_reward)
@@ -358,10 +325,10 @@ def compute_intermediate_values(
     body_state_w: torch.Tensor,
     targets_w: torch.Tensor,
 ):
-    to_target = targets_w - body_pos_w[:, 8, :]
+    to_target = targets_w - body_pos_w[:, 3, :]
     to_target[:, 2] = 0.0
     body_pos = body_pos_w - e_origins
-    center_pos = body_pos[:, 8, :]
+    center_pos = body_pos[:, 3, :]
     body_states = body_state_w.clone()
     body_states[:, :, 0:3] = body_pos
     

@@ -309,16 +309,16 @@ def compute_rewards(
     #
     # total_reward = torch.where(reset_terminated, torch.zeros_like(total_reward), total_reward)  # 0
     
-    rew_upward = body_states[:, 6, 2] + 0.5*body_states[:, 4, 2] + 0.5*body_states[:, 8, 2]
+    rew_upward = body_states[:, 6, 2] + 0.5*body_states[:, 4, 2] + 0.5*body_states[:, 8, 2] - 0.1*torch.ones_like(body_states[:, 6, 2])
     # rew_symmetry = - torch.abs(joint_pos[:, 0] + joint_pos[:, 5]) - torch.abs(joint_pos[:, 1] + joint_pos[:, 4]) - torch.abs(joint_pos[:, 2] + joint_pos[:, 3])
     rew_symmetry = - torch.abs(joint_pos[:, 0] - joint_pos[:, 5]) - torch.abs(joint_pos[:, 1] - joint_pos[:, 4]) - torch.abs(joint_pos[:, 2] - joint_pos[:, 3])
     # rew_quat =  - torch.abs(body_quat[:, 3, 1]) - torch.abs(body_quat[:, 3, 2])
     # total_reward = torch.where(body_states[:, 6, 2] > 0.25,
     #                            10*torch.ones_like(rew_upward) + up_proj,
     #                            10*rew_upward + body_states[:, 6, 9] + body_states[:, 5, 9] + up_proj + 0.5*rew_symmetry - 0.5*contact_sum)
-    total_reward = torch.where(body_states[:, 6, 2] > 0.212,
-                               10*torch.ones_like(rew_upward) + 10*rew_upward + up_proj - 0.1*torch.abs(joint_pos[:, 0]) - 0.1*torch.abs(joint_pos[:, 5]),
-                               10*rew_upward + body_states[:, 6, 9] + body_states[:, 5, 9] + up_proj + 0.5*rew_symmetry - contact_sum - 0.1*torch.abs(joint_pos[:, 0]) - 0.1*torch.abs(joint_pos[:, 5]))
+    total_reward = torch.where(body_states[:, 6, 2] > 0.22,
+                               2*torch.ones_like(rew_upward) + 10*rew_upward + 1.0*(up_proj-1) - 0.1*torch.abs(joint_pos[:, 0]) - 0.1*torch.abs(joint_pos[:, 5]),
+                               10*rew_upward + 1.0*body_states[:, 6, 9] + 1.0*body_states[:, 5, 9] + 0.5*rew_symmetry - 10*contact_sum - 0.1*torch.abs(joint_pos[:, 0]) - 0.1*torch.abs(joint_pos[:, 5]))
     
     total_reward = torch.where(reset_terminated, -10*torch.ones_like(total_reward), total_reward)
     # total_reward = torch.clamp(total_reward, min=0, max=torch.inf)
