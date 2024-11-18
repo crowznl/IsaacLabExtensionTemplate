@@ -17,10 +17,7 @@ from omni.isaac.lab.sensors import ContactSensor, ContactSensorCfg
 from omni.isaac.lab.sim import SimulationCfg
 from omni.isaac.lab.terrains import TerrainImporterCfg 
 from omni.isaac.lab.utils import configclass
-from omni.isaac.lab.utils.math import euler_xyz_from_quat, quat_inv, quat_error_magnitude, axis_angle_from_quat
-from omni.isaac.core.utils.torch.rotations import get_euler_xyz
-from omni.isaac.core.utils.rotations import quat_to_euler_angles, quat_to_rot_matrix
-import numpy as np
+from omni.isaac.lab.utils.math import quat_rotate, quat_apply
 
 from gymnasium.spaces import Box
 
@@ -54,7 +51,7 @@ class ZbotSEnvCfg(DirectRLEnvCfg):
     
     # env
     decimation = 2
-    episode_length_s = 32
+    episode_length_s = 16 #  32
 
     action_space = Box(low=-1.0, high=1.0, shape=(3*num_dof,))
     action_clip = 1.0
@@ -94,7 +91,7 @@ class ZbotSEnvCfg(DirectRLEnvCfg):
 
     # reset
     stand_height = 0.23 #  0.212
-    care_contact = False
+    care_contact = True #  False
 
     # reward scales
 
@@ -112,115 +109,17 @@ class ZbotSEnv(DirectRLEnv):
         self.e_origins = self.scene.env_origins.unsqueeze(1).repeat(1, self.cfg.num_body, 1)
         # print(self.scene.env_origins)
         # print(self.e_origins)
-        # print(self.zbots.data.body_quat_w[0])
-        # print(self.zbots.data.root_quat_w[0])
-        # print(self.zbots.data.root_quat_w[[0], :])
-        # # Convert rotations given as quaternions to Euler angles in radians.
-        # exyz = euler_xyz_from_quat(self.zbots.data.root_quat_w[[0], :])
-        # print("\nexyz", exyz)
-        # print([x * 180 / torch.pi for x in exyz])
-        
-        # exyz2 = get_euler_xyz(self.zbots.data.root_quat_w[[0], :])
-        # print("\nexyz2", exyz2)
-        # print([x * 180 / torch.pi for x in exyz2])
-        
-        # exyz3 = get_euler_xyz(self.zbots.data.root_quat_w[[0], :], False)
-        # print("\nexyz3", exyz3)
-        # print([x * 180 / torch.pi for x in exyz3])
-        
-        # exyz4 = quat_to_euler_angles(self.zbots.data.root_quat_w[0].cpu(), True, True)
-        # print("\nexyz4", exyz4)
-        # # print([x * 180 / torch.pi for x in exyz4])
-        
-        # exyz5 = quat_to_euler_angles(self.zbots.data.root_quat_w[0].cpu(), True, False)
-        # print("\nexyz5", exyz5)
-        # # print([x * 180 / torch.pi for x in exyz5])
-        
-        # exyz6 = axis_angle_from_quat(self.zbots.data.root_quat_w[[0], :])
-        # print("\nexyz6", exyz6)
-        
-        # inq = quat_inv(self.zbots.data.root_quat_w[[0], :])
-        # print("\n\ninq", inq)
-        # iexyz = euler_xyz_from_quat(inq)
-        # print("\niexyz", iexyz)
-        # print([x * 180 / torch.pi for x in iexyz])
-
-        # t_a = self.zbots.data.body_quat_w[0,:2]
-        t_a = self.zbots.data.body_quat_w[0]
-        print(t_a)
-        # Convert rotations given as quaternions to Euler angles in radians.
-        exyz = euler_xyz_from_quat(t_a)
-        print("\nexyz\n", exyz)
-        print([x * 180 / torch.pi for x in exyz])
-        
-        exyz2 = get_euler_xyz(t_a)
-        print("\nexyz2\n", exyz2)
-        print([x * 180 / torch.pi for x in exyz2])
-        
-        exyz3 = get_euler_xyz(t_a, False)
-        print("\nexyz3\n", exyz3)
-        print([x * 180 / torch.pi for x in exyz3])
-        
-        exyz4_m = quat_to_rot_matrix(t_a[0].cpu())
-        exyz4 = quat_to_euler_angles(t_a[0].cpu(), degrees=False, extrinsic=True)
-        exyz4_1m = quat_to_rot_matrix(t_a[1].cpu())
-        exyz4_1 = quat_to_euler_angles(t_a[1].cpu(), degrees=False, extrinsic=True)
-        exyz4_2m = quat_to_rot_matrix(t_a[2].cpu())
-        exyz4_2 = quat_to_euler_angles(t_a[2].cpu(), degrees=False, extrinsic=True)
-        print("\nexyz4_0\n", exyz4_m, "\n", exyz4, "\n")
-        print("\nexyz4_1\n", exyz4_1m, "\n", exyz4_1, "\n")
-        print("\nexyz4_2\n", exyz4_2m, "\n", exyz4_2, "\n")
-        
-        print("\ntorch.atan2(y, x):")
-        print(torch.atan2(torch.tensor([-4.13887963e-05, -1.51347515e-06, 0.0, 0.0, -0.0], 
-                                       dtype=torch.float32, device=self.sim.device), 
-                          torch.tensor([-9.99999999e-01, -1.00000000e+00, -1, 1, -1], 
-                                       dtype=torch.float32, device=self.sim.device)))
-        print("\nnumpy.arctan2(y, x): (x | y)")
-        print("(-9.99999999e-01 | -4.13887963e-05): ", np.arctan2(-4.13887963e-05, -9.99999999e-01))
-        print("(-1.00000000e+00 | -1.51347515e-06): ", np.arctan2(-1.51347515e-06, -1.00000000e+00))
-        print("(-1. | 0.): ", np.arctan2(0.0, -1.0))
-        print("(1. | 0.): ", np.arctan2(0.0, 1.0))
-        print("(-1. | -0.): ", np.arctan2(-0.0, -1.0))
-        
-        
-        km = quat_to_rot_matrix([-0.70711, 0, 0.70711, 0])
-        ke = quat_to_euler_angles([-0.70711, 0, 0.70711, 0], degrees=False, extrinsic=True)
-        ki = quat_to_euler_angles([-0.70711, 0, 0.70711, 0], degrees=False, extrinsic=False)
-        print("\nq = [-0.70711, 0, 0.70711, 0]\n", km, "\nextrinsic: ", ke, "\nintrinsic: ", ki)
-
-        # exyz4d = quat_to_euler_angles(t_a[0].cpu(), degrees=True, extrinsic=True)
-        # exyz4_1d = quat_to_euler_angles(t_a[1].cpu(), degrees=True, extrinsic=True)
-        # exyz4_2d = quat_to_euler_angles(t_a[2].cpu(), degrees=True, extrinsic=True)
-        # print("\nexyz4d\n", exyz4d, "\n", exyz4_1d, "\n", exyz4_2d)
-        # [bug]Very obviously, the argument “degrees” will not work, when it works out pitch = ± pi / 2
-        
-        # exyz5 = quat_to_euler_angles(t_a[0].cpu(), degrees=False, extrinsic=False)
-        # exyz5_m = quat_to_rot_matrix(t_a[0].cpu())
-        # exyz5_1 = quat_to_euler_angles(t_a[1].cpu(), degrees=False, extrinsic=False)
-        # exyz5_2 = quat_to_euler_angles(t_a[2].cpu(), degrees=False, extrinsic=False)
-        # print("\nexyz5\n", exyz5, "\n", exyz5_m, "\n", exyz5_1, "\n", exyz5_2)
-        
-        # exyz6 = axis_angle_from_quat(t_a)
-        # print("\nexyz6\n", exyz6)
-        # print(exyz6 * 180 / torch.pi)
-        
-        # inq = quat_inv(t_a)
-        # # print("\n\ninq\n", inq)
-        # iexyz = euler_xyz_from_quat(inq)
-        # print("\niexyz\n", iexyz)
-        # print([x * 180 / torch.pi for x in iexyz])
-        
-        qer_1 = quat_error_magnitude(t_a[0], t_a[1])
-        print("\nqer_1\n", qer_1)
-        qer_2 = quat_error_magnitude(self.zbots.data.body_quat_w[:, 0], self.zbots.data.body_quat_w[:, 1])
-        print("\nqer_2\n", qer_2)
         
         m = 2*torch.pi
         # self.phi = torch.tensor([0, 0.25*m, 0.5*m, 0.75*m, 1.0*m, 1.25*m], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
         self.dof_lower_limits = torch.tensor([-0.5*m, -0.5*m, -0.5*m, -0.5*m, -0.5*m, -0.5*m], dtype=torch.float32, device=self.sim.device)
         self.dof_upper_limits = torch.tensor([0.5*m, 0.5*m, 0.5*m, 0.5*m, 0.5*m, 0.5*m], dtype=torch.float32, device=self.sim.device)
         self.pos_d = torch.zeros_like(self.zbots.data.joint_pos)
+        
+        self.up_vec = torch.tensor([-1, 0, 0], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
+        self.heading_vec = torch.tensor([0, -1, 0], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
+        self.basis_z = torch.tensor([0, 0, 1], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
+        self.basis_x = torch.tensor([1, 0, 0], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
 
         self.sim_count = torch.zeros(self.scene.cfg.num_envs, dtype=torch.int, device=self.sim.device)
         self.dead_count = torch.zeros(self.scene.cfg.num_envs, dtype=torch.int, device=self.sim.device)
@@ -280,6 +179,10 @@ class ZbotSEnv(DirectRLEnv):
         self.joint_pos = self.zbots.data.joint_pos
         self.joint_vel = self.zbots.data.joint_vel
         self.body_quat = self.zbots.data.body_quat_w[:, 0::2, :]
+        self.center_up = quat_apply(self.body_quat[:,3], self.up_vec)
+        # print(self.center_up.shape, self.center_up[0])
+        self.up_proj = torch.einsum("ij,ij->i", self.center_up, self.basis_z)
+        # print(self.up_proj.shape, self.up_proj[0])
         
         (
             self.body_pos,
@@ -322,6 +225,7 @@ class ZbotSEnv(DirectRLEnv):
             self.body_quat,
             self.joint_pos,
             self.reset_terminated,
+            self.up_proj,
             contact_sum,
             self.cfg.stand_height
         )
@@ -368,6 +272,7 @@ def compute_rewards(
     body_quat: torch.Tensor,
     joint_pos: torch.Tensor,
     reset_terminated: torch.Tensor,
+    up_proj: torch.Tensor,
     contact_sum: torch.Tensor,
     stand_height: float = 0.212
 ):
@@ -405,11 +310,15 @@ def compute_rewards(
     # total_reward = torch.where(reset_terminated, torch.zeros_like(total_reward), total_reward)  # 0
     
     rew_upward = body_states[:, 6, 2] + 0.5*body_states[:, 4, 2] + 0.5*body_states[:, 8, 2]
-    rew_symmetry = - torch.abs(joint_pos[:, 0] + joint_pos[:, 5]) - torch.abs(joint_pos[:, 1] + joint_pos[:, 4]) - torch.abs(joint_pos[:, 2] + joint_pos[:, 3])
+    # rew_symmetry = - torch.abs(joint_pos[:, 0] + joint_pos[:, 5]) - torch.abs(joint_pos[:, 1] + joint_pos[:, 4]) - torch.abs(joint_pos[:, 2] + joint_pos[:, 3])
+    rew_symmetry = - torch.abs(joint_pos[:, 0] - joint_pos[:, 5]) - torch.abs(joint_pos[:, 1] - joint_pos[:, 4]) - torch.abs(joint_pos[:, 2] - joint_pos[:, 3])
     # rew_quat =  - torch.abs(body_quat[:, 3, 1]) - torch.abs(body_quat[:, 3, 2])
-    total_reward = torch.where(body_states[:, 6, 2] > 0.25,
-                               10*torch.ones_like(rew_upward),
-                               rew_upward + 0.1*rew_symmetry - 0.1*contact_sum)
+    # total_reward = torch.where(body_states[:, 6, 2] > 0.25,
+    #                            10*torch.ones_like(rew_upward) + up_proj,
+    #                            10*rew_upward + body_states[:, 6, 9] + body_states[:, 5, 9] + up_proj + 0.5*rew_symmetry - 0.5*contact_sum)
+    total_reward = torch.where(body_states[:, 6, 2] > 0.212,
+                               10*torch.ones_like(rew_upward) + 10*rew_upward + up_proj - 0.1*torch.abs(joint_pos[:, 0]) - 0.1*torch.abs(joint_pos[:, 5]),
+                               10*rew_upward + body_states[:, 6, 9] + body_states[:, 5, 9] + up_proj + 0.5*rew_symmetry - contact_sum - 0.1*torch.abs(joint_pos[:, 0]) - 0.1*torch.abs(joint_pos[:, 5]))
     
     total_reward = torch.where(reset_terminated, -10*torch.ones_like(total_reward), total_reward)
     # total_reward = torch.clamp(total_reward, min=0, max=torch.inf)
