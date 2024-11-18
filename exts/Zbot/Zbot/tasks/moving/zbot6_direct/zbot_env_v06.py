@@ -19,7 +19,8 @@ from omni.isaac.lab.terrains import TerrainImporterCfg
 from omni.isaac.lab.utils import configclass
 from omni.isaac.lab.utils.math import euler_xyz_from_quat, quat_inv, quat_error_magnitude, axis_angle_from_quat
 from omni.isaac.core.utils.torch.rotations import get_euler_xyz
-from omni.isaac.core.utils.rotations import quat_to_euler_angles
+from omni.isaac.core.utils.rotations import quat_to_euler_angles, quat_to_rot_matrix
+import numpy as np
 
 from gymnasium.spaces import Box
 
@@ -64,8 +65,8 @@ class ZbotSEnvCfg(DirectRLEnvCfg):
     sim: SimulationCfg = SimulationCfg(
         dt=1 / 120,
         render_interval=decimation,
-        use_fabric=True,
-        disable_contact_processing=True,
+        use_fabric=True,  # Default is True
+        disable_contact_processing=True,  # Default is False
         physics_material=sim_utils.RigidBodyMaterialCfg(
             friction_combine_mode="multiply",
             restitution_combine_mode="multiply",
@@ -111,38 +112,109 @@ class ZbotSEnv(DirectRLEnv):
         self.e_origins = self.scene.env_origins.unsqueeze(1).repeat(1, self.cfg.num_body, 1)
         # print(self.scene.env_origins)
         # print(self.e_origins)
-        print(self.zbots.data.body_quat_w[0])
-        print(self.zbots.data.root_quat_w[0:2])
-        print(self.zbots.data.root_quat_w[[0,1], :])
+        # print(self.zbots.data.body_quat_w[0])
+        # print(self.zbots.data.root_quat_w[0])
+        # print(self.zbots.data.root_quat_w[[0], :])
+        # # Convert rotations given as quaternions to Euler angles in radians.
+        # exyz = euler_xyz_from_quat(self.zbots.data.root_quat_w[[0], :])
+        # print("\nexyz", exyz)
+        # print([x * 180 / torch.pi for x in exyz])
+        
+        # exyz2 = get_euler_xyz(self.zbots.data.root_quat_w[[0], :])
+        # print("\nexyz2", exyz2)
+        # print([x * 180 / torch.pi for x in exyz2])
+        
+        # exyz3 = get_euler_xyz(self.zbots.data.root_quat_w[[0], :], False)
+        # print("\nexyz3", exyz3)
+        # print([x * 180 / torch.pi for x in exyz3])
+        
+        # exyz4 = quat_to_euler_angles(self.zbots.data.root_quat_w[0].cpu(), True, True)
+        # print("\nexyz4", exyz4)
+        # # print([x * 180 / torch.pi for x in exyz4])
+        
+        # exyz5 = quat_to_euler_angles(self.zbots.data.root_quat_w[0].cpu(), True, False)
+        # print("\nexyz5", exyz5)
+        # # print([x * 180 / torch.pi for x in exyz5])
+        
+        # exyz6 = axis_angle_from_quat(self.zbots.data.root_quat_w[[0], :])
+        # print("\nexyz6", exyz6)
+        
+        # inq = quat_inv(self.zbots.data.root_quat_w[[0], :])
+        # print("\n\ninq", inq)
+        # iexyz = euler_xyz_from_quat(inq)
+        # print("\niexyz", iexyz)
+        # print([x * 180 / torch.pi for x in iexyz])
+
+        # t_a = self.zbots.data.body_quat_w[0,:2]
+        t_a = self.zbots.data.body_quat_w[0]
+        print(t_a)
         # Convert rotations given as quaternions to Euler angles in radians.
-        exyz = euler_xyz_from_quat(self.zbots.data.root_quat_w[[0,1], :])
-        print("\nexyz", exyz)
+        exyz = euler_xyz_from_quat(t_a)
+        print("\nexyz\n", exyz)
         print([x * 180 / torch.pi for x in exyz])
         
-        exyz2 = get_euler_xyz(self.zbots.data.root_quat_w[[0], :])
-        print("\nexyz2", exyz2)
+        exyz2 = get_euler_xyz(t_a)
+        print("\nexyz2\n", exyz2)
         print([x * 180 / torch.pi for x in exyz2])
         
-        exyz3 = get_euler_xyz(self.zbots.data.root_quat_w[[0], :], False)
-        print("\nexyz3", exyz3)
+        exyz3 = get_euler_xyz(t_a, False)
+        print("\nexyz3\n", exyz3)
         print([x * 180 / torch.pi for x in exyz3])
         
-        exyz4 = quat_to_euler_angles(self.zbots.data.root_quat_w[0].cpu(), True, True)
-        print("\nexyz4", exyz4)
-        # print([x * 180 / torch.pi for x in exyz4])
+        exyz4_m = quat_to_rot_matrix(t_a[0].cpu())
+        exyz4 = quat_to_euler_angles(t_a[0].cpu(), degrees=False, extrinsic=True)
+        exyz4_1m = quat_to_rot_matrix(t_a[1].cpu())
+        exyz4_1 = quat_to_euler_angles(t_a[1].cpu(), degrees=False, extrinsic=True)
+        exyz4_2m = quat_to_rot_matrix(t_a[2].cpu())
+        exyz4_2 = quat_to_euler_angles(t_a[2].cpu(), degrees=False, extrinsic=True)
+        print("\nexyz4_0\n", exyz4_m, "\n", exyz4, "\n")
+        print("\nexyz4_1\n", exyz4_1m, "\n", exyz4_1, "\n")
+        print("\nexyz4_2\n", exyz4_2m, "\n", exyz4_2, "\n")
         
-        exyz5 = quat_to_euler_angles(self.zbots.data.root_quat_w[0].cpu(), True, False)
-        print("\nexyz5", exyz5)
-        # print([x * 180 / torch.pi for x in exyz5])
+        print("\ntorch.atan2(y, x):")
+        print(torch.atan2(torch.tensor([-4.13887963e-05, -1.51347515e-06, 0.0, 0.0, -0.0], 
+                                       dtype=torch.float32, device=self.sim.device), 
+                          torch.tensor([-9.99999999e-01, -1.00000000e+00, -1, 1, -1], 
+                                       dtype=torch.float32, device=self.sim.device)))
+        print("\nnumpy.arctan2(y, x): (x | y)")
+        print("(-9.99999999e-01 | -4.13887963e-05): ", np.arctan2(-4.13887963e-05, -9.99999999e-01))
+        print("(-1.00000000e+00 | -1.51347515e-06): ", np.arctan2(-1.51347515e-06, -1.00000000e+00))
+        print("(-1. | 0.): ", np.arctan2(0.0, -1.0))
+        print("(1. | 0.): ", np.arctan2(0.0, 1.0))
+        print("(-1. | -0.): ", np.arctan2(-0.0, -1.0))
         
-        exyz6 = axis_angle_from_quat(self.zbots.data.root_quat_w[[0], :])
-        print("\nexyz6", exyz6)
         
-        inq = quat_inv(self.zbots.data.root_quat_w[[0], :])
-        print("\n\ninq", inq)
-        iexyz = euler_xyz_from_quat(inq)
-        print("\niexyz", iexyz)
-        print([x * 180 / torch.pi for x in iexyz])
+        km = quat_to_rot_matrix([-0.70711, 0, 0.70711, 0])
+        ke = quat_to_euler_angles([-0.70711, 0, 0.70711, 0], degrees=False, extrinsic=True)
+        ki = quat_to_euler_angles([-0.70711, 0, 0.70711, 0], degrees=False, extrinsic=False)
+        print("\nq = [-0.70711, 0, 0.70711, 0]\n", km, "\nextrinsic: ", ke, "\nintrinsic: ", ki)
+
+        # exyz4d = quat_to_euler_angles(t_a[0].cpu(), degrees=True, extrinsic=True)
+        # exyz4_1d = quat_to_euler_angles(t_a[1].cpu(), degrees=True, extrinsic=True)
+        # exyz4_2d = quat_to_euler_angles(t_a[2].cpu(), degrees=True, extrinsic=True)
+        # print("\nexyz4d\n", exyz4d, "\n", exyz4_1d, "\n", exyz4_2d)
+        # [bug]Very obviously, the argument “degrees” will not work, when it works out pitch = ± pi / 2
+        
+        # exyz5 = quat_to_euler_angles(t_a[0].cpu(), degrees=False, extrinsic=False)
+        # exyz5_m = quat_to_rot_matrix(t_a[0].cpu())
+        # exyz5_1 = quat_to_euler_angles(t_a[1].cpu(), degrees=False, extrinsic=False)
+        # exyz5_2 = quat_to_euler_angles(t_a[2].cpu(), degrees=False, extrinsic=False)
+        # print("\nexyz5\n", exyz5, "\n", exyz5_m, "\n", exyz5_1, "\n", exyz5_2)
+        
+        # exyz6 = axis_angle_from_quat(t_a)
+        # print("\nexyz6\n", exyz6)
+        # print(exyz6 * 180 / torch.pi)
+        
+        # inq = quat_inv(t_a)
+        # # print("\n\ninq\n", inq)
+        # iexyz = euler_xyz_from_quat(inq)
+        # print("\niexyz\n", iexyz)
+        # print([x * 180 / torch.pi for x in iexyz])
+        
+        qer_1 = quat_error_magnitude(t_a[0], t_a[1])
+        print("\nqer_1\n", qer_1)
+        qer_2 = quat_error_magnitude(self.zbots.data.body_quat_w[:, 0], self.zbots.data.body_quat_w[:, 1])
+        print("\nqer_2\n", qer_2)
         
         m = 2*torch.pi
         # self.phi = torch.tensor([0, 0.25*m, 0.5*m, 0.75*m, 1.0*m, 1.25*m], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
