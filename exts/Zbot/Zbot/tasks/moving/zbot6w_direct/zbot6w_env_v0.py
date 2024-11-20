@@ -28,7 +28,7 @@ class ZbotWEnvCfg(DirectRLEnvCfg):
         prim_path="/World/envs/env_.*/Robot/(a.*|b.*)", history_length=3, update_period=0.0, track_air_time=False)
     
     num_dof = 6
-    num_body = 6
+    num_module = 6
     
     # env
     """
@@ -97,8 +97,8 @@ class ZbotWEnv(DirectRLEnv):
 
         self.targets = torch.tensor([10, 0, 0], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
         self.targets += self.scene.env_origins
-        # 重复最后一维 num_body 次
-        self.e_origins = self.scene.env_origins.unsqueeze(1).repeat(1, self.cfg.num_body, 1)
+        # 重复最后一维 num_module 次
+        self.e_origins = self.scene.env_origins.unsqueeze(1).repeat(1, self.cfg.num_module, 1)
         # print(self.scene.env_origins)
         # print(self.e_origins)
         
@@ -111,18 +111,17 @@ class ZbotWEnv(DirectRLEnv):
         
         
         m = 2*torch.pi
-        self.dof_lower_limits = torch.tensor([-0.5*m, -0.5*m, -0.5*m, -0.5*m, -0.5*m, -0.5*m, -0.5*m, -0.5*m], dtype=torch.float32, device=self.sim.device)
-        self.dof_upper_limits = torch.tensor([0.5*m, 0.5*m, 0.5*m, 0.5*m, 0.5*m, 0.5*m, 0.5*m, 0.5*m], dtype=torch.float32, device=self.sim.device)
+        self.dof_lower_limits = torch.tensor([-0.5*m, -0.5*m, -0.5*m, -0.5*m, -0.5*m, -0.5*m], dtype=torch.float32, device=self.sim.device)
+        self.dof_upper_limits = torch.tensor([0.5*m, 0.5*m, 0.5*m, 0.5*m, 0.5*m, 0.5*m], dtype=torch.float32, device=self.sim.device)
         # self.dof_lower_limits: torch.Tensor = self.zbots.data.soft_joint_pos_limits[0, :, 0]
         # self.dof_upper_limits: torch.Tensor = self.zbots.data.soft_joint_pos_limits[0, :, 1]
         # print(self.dof_lower_limits, self.dof_upper_limits)
 
         # self.phi = torch.tensor([0, 0.25*m, 0.5*m, 0.75*m, 1.0*m, 1.25*m], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
-        self.pos_d = torch.zeros_like(self.zbots.data.joint_pos)
+        self.pos_d = torch.zeros_like(self.zbots.data.joint_pos[:, self._joint_idx])
 
         self.sim_count = torch.zeros(self.scene.cfg.num_envs, dtype=torch.int, device=self.sim.device)
         self.dead_count = torch.zeros(self.scene.cfg.num_envs, dtype=torch.int, device=self.sim.device)
-        self.center_z_last = 0.05*torch.ones(self.scene.cfg.num_envs, dtype=torch.float32, device=self.sim.device)
 
     def _setup_scene(self):
         self.zbots = Articulation(self.cfg.robot_cfg)
@@ -166,7 +165,7 @@ class ZbotWEnv(DirectRLEnv):
 
 
     def _apply_action(self) -> None:
-        self.zbots.set_joint_position_target(self.pos_d)
+        self.zbots.set_joint_position_target(self.pos_d, self._joint_idx)
 
     def _compute_intermediate_values(self):
         self.joint_pos = self.zbots.data.joint_pos[:, self._joint_idx]
@@ -203,7 +202,7 @@ class ZbotWEnv(DirectRLEnv):
             self.body_states,
             self.joint_pos,
             self.reset_terminated,
-            self.cfg.stand_height,
+            self.to_target
         )
         return total_reward
 
@@ -217,21 +216,10 @@ class ZbotWEnv(DirectRLEnv):
         
         out_of_direction = (self.dead_count >= 50)
         
-        filter_contact_forces = self._contact_sensor.data.force_matrix_w
-        died = torch.any(torch.max(torch.norm(filter_contact_forces, dim=-1), dim=1)[0] > 1.0, dim=1)
-        # print("died: ", died)
+        net_contact_forces = self._contact_sensor.data.net_forces_w_history
+        died = torch.any(torch.max(torch.norm(net_contact_forces, dim=-1), dim=1)[0] > 1.0, dim=1)
+        print("died: ", died)
         out_of_direction = out_of_direction | died
-
-        # the reset penalty is too high, result the policy donnot want to get the goal_height
-        # just_fall_down = torch.logical_and((self.center_pos_last[:, 2] > self.cfg.stand_height),(self.center_pos[:, 2] < self.cfg.stand_height))
-        # The time interval between two consecutive step is too short
-        d1 = self.center_z_last - self.center_pos[:, 2]
-        # print(d1[0:4])
-        just_fall_down = d1 > 0.05
-        out_of_direction = out_of_direction | just_fall_down
-
-        # print(self.sim_count[0:4])
-        self.center_z_last = torch.where((self.sim_count % 30 == 1), self.center_pos[:, 2], self.center_z_last) # or put in _reset_idx()
         
         return out_of_direction, time_out
 
@@ -241,19 +229,18 @@ class ZbotWEnv(DirectRLEnv):
         self.zbots.reset(env_ids)
         super()._reset_idx(env_ids)
 
-        joint_pos = self.zbots.data.default_joint_pos[env_ids]
-        joint_vel = self.zbots.data.default_joint_vel[env_ids]
+        joint_pos_r = self.zbots.data.default_joint_pos[env_ids]
+        joint_vel_r = self.zbots.data.default_joint_vel[env_ids]
         default_root_state = self.zbots.data.default_root_state[env_ids]
         default_root_state[:, :3] += self.scene.env_origins[env_ids]
-        # print(joint_pos[0], joint_vel[0], default_root_state[0])
+        # print(joint_pos_r[0], joint_vel_r[0], default_root_state[0])
 
         self.zbots.write_root_state_to_sim(default_root_state, env_ids)
-        self.zbots.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
+        self.zbots.write_joint_state_to_sim(joint_pos_r, joint_vel_r, None, env_ids)
         
         self.sim_count[env_ids] = 0
         self.dead_count[env_ids] = 0
         self.pos_d[env_ids] = 0
-        self.center_z_last[env_ids] = 0.05
         self._compute_intermediate_values()
 
 
@@ -262,7 +249,7 @@ def compute_rewards(
     body_states: torch.Tensor,
     joint_pos: torch.Tensor,
     reset_terminated: torch.Tensor,
-    stand_height: float = 0.212,
+    to_target: torch.Tensor,
 ):
     # total_reward = 1.0*body_states[:, 6, 0] + 1.0*body_states[:, 6, 7] - 0.2*torch.abs(body_states[:, 0, 1]) - 0.2*torch.abs(body_states[:, 10, 1]) - 0.1*torch.abs(body_states[:, 6, 1])
     # total_reward = 1.0*(body_states[:, 6, 0]+0.318) + 1.0*body_states[:, 6, 7] - 0.1*torch.abs(body_states[:, 0, 1]) - 0.1*torch.abs(body_states[:, 10, 1]) - 0.8*torch.abs(body_states[:, 6, 1])
@@ -309,7 +296,7 @@ def compute_rewards(
     #                            total_reward + torch.ones_like(total_reward) + body_states[:, 8, 1], 
     #                            total_reward)
     
-    total_reward = 0.5*body_states[:, 3, 0]+0.1*body_states[:, 3, 7]
+    total_reward = 0.5*body_states[:, 3, 0] + 0.1*body_states[:, 3, 7]
     
     # adjust reward for wrong way reset agents
     total_reward = torch.where(reset_terminated, -100*torch.zeros_like(total_reward), total_reward)

@@ -17,7 +17,7 @@ from omni.isaac.lab.sensors import ContactSensor, ContactSensorCfg
 from omni.isaac.lab.sim import SimulationCfg
 from omni.isaac.lab.terrains import TerrainImporterCfg 
 from omni.isaac.lab.utils import configclass
-from omni.isaac.lab.utils.math import quat_rotate, quat_apply
+from omni.isaac.lab.utils.math import quat_rotate
 
 from gymnasium.spaces import Box
 
@@ -179,7 +179,8 @@ class ZbotSEnv(DirectRLEnv):
         self.joint_pos = self.zbots.data.joint_pos
         self.joint_vel = self.zbots.data.joint_vel
         self.body_quat = self.zbots.data.body_quat_w[:, 0::2, :]
-        self.center_up = quat_apply(self.body_quat[:,3], self.up_vec)
+        # self.center_up = quat_apply(self.body_quat[:,3], self.up_vec)
+        self.center_up = quat_rotate(self.body_quat[:,3], self.up_vec)
         # print(self.center_up.shape, self.center_up[0])
         self.up_proj = torch.einsum("ij,ij->i", self.center_up, self.basis_z)
         # print(self.up_proj.shape, self.up_proj[0])
@@ -317,7 +318,7 @@ def compute_rewards(
     #                            10*torch.ones_like(rew_upward) + up_proj,
     #                            10*rew_upward + body_states[:, 6, 9] + body_states[:, 5, 9] + up_proj + 0.5*rew_symmetry - 0.5*contact_sum)
     total_reward = torch.where(body_states[:, 6, 2] > 0.22,
-                               2*torch.ones_like(rew_upward) + 10*rew_upward + 1.0*(up_proj-1) - 0.1*torch.abs(joint_pos[:, 0]) - 0.1*torch.abs(joint_pos[:, 5]),
+                               2*torch.ones_like(rew_upward) + 10*rew_upward + 1.0*(up_proj-1) + 0.5*rew_symmetry,
                                10*rew_upward + 1.0*body_states[:, 6, 9] + 1.0*body_states[:, 5, 9] + 0.5*rew_symmetry - 10*contact_sum - 0.1*torch.abs(joint_pos[:, 0]) - 0.1*torch.abs(joint_pos[:, 5]))
     
     total_reward = torch.where(reset_terminated, -10*torch.ones_like(total_reward), total_reward)

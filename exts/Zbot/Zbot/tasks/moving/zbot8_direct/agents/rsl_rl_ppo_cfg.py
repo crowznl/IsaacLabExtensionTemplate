@@ -7,7 +7,7 @@ from omni.isaac.lab_tasks.utils.wrappers.rsl_rl import (
 
 
 @configclass
-class ZbotSFlatPPORunnerCfg(RslRlOnPolicyRunnerCfg):
+class ZbotEFlatPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 16  # 32 The number of steps per environment per update.
     max_iterations = 500
     save_interval = 50
