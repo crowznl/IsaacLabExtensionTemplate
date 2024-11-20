@@ -13,7 +13,7 @@ Reference: https://github.com/crowznl
 """
 
 import omni.isaac.lab.sim as sim_utils
-from omni.isaac.lab.actuators import ImplicitActuatorCfg
+from omni.isaac.lab.actuators import ImplicitActuatorCfg  # DCMotorCfg
 from omni.isaac.lab.assets.articulation import ArticulationCfg
 from Zbot.assets import ISAACLAB_ASSETS_DATA_DIR
 
@@ -33,7 +33,8 @@ usd_dir_path = ISAACLAB_ASSETS_DATA_DIR
                     # self._num_envs = len(self._parent_prims)
 robot_usd = "zbot_6s_v03.usd"
 robot_8_usd = "zbot_8s_v0.usd"
-robot_6w_usd = "zbot_6w_v0.usd"
+# robot_6w_usd = "zbot_6w_v0.usd"
+robot_6w_usd = "zbot_6w_v1.usd"  # change pivot_b's frame
 
 ##
 # Configuration
@@ -180,16 +181,15 @@ ZBOT_D_6W_CFG = ArticulationCfg(
             "joint[1-6]": 0.0,
         },
     ),
-    soft_joint_pos_limit_factor=1.0,
     actuators={
         "zbot_six_w": ImplicitActuatorCfg(
-            # joint_names_expr=[".*joint"],
             joint_names_expr=["joint.*"],
-            effort_limit=20,
-            velocity_limit=10,
-            stiffness=20,
+            effort_limit=18.0,
+            velocity_limit=2.0,
+            stiffness=20.0,
             damping=0.5,
             friction=0.0,
         ),
     },
+    soft_joint_pos_limit_factor=1.0,
 )

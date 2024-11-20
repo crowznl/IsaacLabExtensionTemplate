@@ -345,7 +345,8 @@ def compute_rewards(
                                total_reward)
     
     # adjust reward for wrong way reset agents
-    total_reward = torch.where(reset_terminated, -100*torch.zeros_like(total_reward), total_reward)
+    # total_reward = torch.where(reset_terminated, -100*torch.zeros_like(total_reward), total_reward)  # zero don't work!
+    total_reward = torch.where(reset_terminated, -10*torch.ones_like(total_reward), total_reward)
     # total_reward = torch.clamp(total_reward, min=0, max=torch.inf)
     # print(total_reward)
     return total_reward

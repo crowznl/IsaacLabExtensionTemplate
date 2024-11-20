@@ -48,7 +48,7 @@ class ZbotWEnvCfg(DirectRLEnvCfg):
 
     action_space = Box(low=-1.0, high=1.0, shape=(3*num_dof,)) 
     action_clip = 1.0
-    observation_space = 36
+    observation_space = 40
     state_space = 0
 
     # simulation  # use_fabric=True the GUI will not update
@@ -97,8 +97,8 @@ class ZbotWEnv(DirectRLEnv):
 
         self.targets = torch.tensor([10, 0, 0], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
         self.targets += self.scene.env_origins
-        # 重复最后一维 num_module 次
-        self.e_origins = self.scene.env_origins.unsqueeze(1).repeat(1, self.cfg.num_module, 1)
+        # 重复最后一维 num_module+1 次
+        self.e_origins = self.scene.env_origins.unsqueeze(1).repeat(1, self.cfg.num_module+1, 1)
         # print(self.scene.env_origins)
         # print(self.e_origins)
         
@@ -106,6 +106,8 @@ class ZbotWEnv(DirectRLEnv):
         print(self._contact_sensor)
         self._joint_idx, _ = self.zbots.find_joints("joint.*")
         self._a_idx, _ = self.zbots.find_bodies("a.*")
+        self._footR_idx = self.zbots.find_bodies("pivot_b")[0]
+        self._a_idx.extend(self._footR_idx)
         print(self.zbots.find_bodies(".*"))
         print(self.zbots.find_joints(".*"))
         
@@ -118,7 +120,10 @@ class ZbotWEnv(DirectRLEnv):
         # print(self.dof_lower_limits, self.dof_upper_limits)
 
         # self.phi = torch.tensor([0, 0.25*m, 0.5*m, 0.75*m, 1.0*m, 1.25*m], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
-        self.pos_d = torch.zeros_like(self.zbots.data.joint_pos[:, self._joint_idx])
+        # self.pos_d = torch.zeros_like(self.zbots.data.joint_pos[:, self._joint_idx])
+        self.pos_init = self.zbots.data.default_joint_pos[:, self._joint_idx]
+        self.pos_d = self.pos_init.clone()
+        print(self.pos_d.shape)
 
         self.sim_count = torch.zeros(self.scene.cfg.num_envs, dtype=torch.int, device=self.sim.device)
         self.dead_count = torch.zeros(self.scene.cfg.num_envs, dtype=torch.int, device=self.sim.device)
@@ -127,7 +132,10 @@ class ZbotWEnv(DirectRLEnv):
         self.zbots = Articulation(self.cfg.robot_cfg)
         # add articultion to scene
         self.scene.articulations["zbots"] = self.zbots
+        
         self._contact_sensor = ContactSensor(self.cfg.contact_sensor_1)
+        self.scene.sensors["contact_sensor"] = self._contact_sensor
+        
         # add ground plane
         self.cfg.terrain.num_envs = self.scene.cfg.num_envs
         self.cfg.terrain.env_spacing = self.scene.cfg.env_spacing
@@ -158,8 +166,6 @@ class ZbotWEnv(DirectRLEnv):
         self.pos_d += v_d*self.cfg.sim.dt
         self.pos_d = torch.clamp(self.pos_d, min=1*self.dof_lower_limits, max=1*self.dof_upper_limits)
         # print(self.pos_d.size(), self.pos_d[0])
-        # self.pos_d[:,0] = 0
-        # self.pos_d[:,7] = 0
 
         self.sim_count += 1
 
@@ -190,7 +196,7 @@ class ZbotWEnv(DirectRLEnv):
                 self.body_quat.reshape(self.scene.cfg.num_envs, -1),
                 self.joint_vel,
                 self.joint_pos,
-                # 4*6+6+6
+                # 4*(6+1)+6+6
             ),
             dim=-1,
         )
@@ -218,7 +224,7 @@ class ZbotWEnv(DirectRLEnv):
         
         net_contact_forces = self._contact_sensor.data.net_forces_w_history
         died = torch.any(torch.max(torch.norm(net_contact_forces, dim=-1), dim=1)[0] > 1.0, dim=1)
-        print("died: ", died)
+        # print("died: ", died)
         out_of_direction = out_of_direction | died
         
         return out_of_direction, time_out
@@ -229,7 +235,7 @@ class ZbotWEnv(DirectRLEnv):
         self.zbots.reset(env_ids)
         super()._reset_idx(env_ids)
 
-        joint_pos_r = self.zbots.data.default_joint_pos[env_ids]
+        joint_pos_r = self.zbots.data.default_joint_pos[env_ids]  # include wheel joints
         joint_vel_r = self.zbots.data.default_joint_vel[env_ids]
         default_root_state = self.zbots.data.default_root_state[env_ids]
         default_root_state[:, :3] += self.scene.env_origins[env_ids]
@@ -240,7 +246,7 @@ class ZbotWEnv(DirectRLEnv):
         
         self.sim_count[env_ids] = 0
         self.dead_count[env_ids] = 0
-        self.pos_d[env_ids] = 0
+        self.pos_d[env_ids] = self.pos_init[env_ids]
         self._compute_intermediate_values()
 
 
@@ -299,7 +305,7 @@ def compute_rewards(
     total_reward = 0.5*body_states[:, 3, 0] + 0.1*body_states[:, 3, 7]
     
     # adjust reward for wrong way reset agents
-    total_reward = torch.where(reset_terminated, -100*torch.zeros_like(total_reward), total_reward)
+    total_reward = torch.where(reset_terminated, -10*torch.ones_like(total_reward), total_reward)
     # total_reward = torch.clamp(total_reward, min=0, max=torch.inf)
     # print(total_reward)
     return total_reward
