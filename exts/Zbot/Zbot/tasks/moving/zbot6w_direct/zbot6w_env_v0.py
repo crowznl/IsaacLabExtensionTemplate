@@ -255,9 +255,10 @@ def compute_rewards(
     to_target: torch.Tensor,
 ):
     # total_reward = 0.5*body_states[:, 3, 0] + 0.1*body_states[:, 3, 7] + 0.3*(body_states[:, 3, 2]-0.16)
-    rew_distance = 10*torch.exp(-torch.norm(to_target, p=2, dim=-1) / 0.1)
-    total_reward = rew_distance + 0.3*(body_states[:, 3, 2]-0.16)
-    
+    # rew_distance = 10*torch.exp(-torch.norm(to_target, p=2, dim=-1) / 0.1)
+    # total_reward = rew_distance + 0.3*(body_states[:, 3, 2]-0.16)
+    rew_forward = 1*body_states[:, 3, 7]
+    total_reward = rew_forward + 0.3*(body_states[:, 3, 2]-0.16)
     # adjust reward for wrong way reset agents
     total_reward = torch.where(reset_terminated, -2*torch.ones_like(total_reward), total_reward)
     # total_reward = torch.clamp(total_reward, min=0, max=torch.inf)
