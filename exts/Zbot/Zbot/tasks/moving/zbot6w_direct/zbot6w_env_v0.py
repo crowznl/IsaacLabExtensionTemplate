@@ -126,7 +126,6 @@ class ZbotWEnv(DirectRLEnv):
         print(self.pos_d.shape)
 
         self.sim_count = torch.zeros(self.scene.cfg.num_envs, dtype=torch.int, device=self.sim.device)
-        self.dead_count = torch.zeros(self.scene.cfg.num_envs, dtype=torch.int, device=self.sim.device)
 
     def _setup_scene(self):
         self.zbots = Articulation(self.cfg.robot_cfg)
@@ -182,7 +181,8 @@ class ZbotWEnv(DirectRLEnv):
             self.body_pos,
             self.center_pos,
             self.body_states,
-            self.to_target
+            self.to_target,
+            self.foot_d
         ) = compute_intermediate_values(
             self.e_origins,
             self.zbots.data.body_pos_w[:, self._a_idx],
@@ -215,12 +215,10 @@ class ZbotWEnv(DirectRLEnv):
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
 
         self._compute_intermediate_values()
-        alive = torch.norm(self.body_states[:, 3, -6:], p=2, dim=-1)
-        self.dead_count = torch.where(alive < 0.1 , self.dead_count + 1, self.dead_count)
 
         time_out = self.episode_length_buf >= self.max_episode_length - 1
         
-        out_of_direction = (self.dead_count >= 50)
+        out_of_direction = (self.foot_d >= 0.4)
         
         net_contact_forces = self._contact_sensor.data.net_forces_w_history
         died = torch.any(torch.max(torch.norm(net_contact_forces, dim=-1), dim=1)[0] > 1.0, dim=1)
@@ -245,7 +243,6 @@ class ZbotWEnv(DirectRLEnv):
         self.zbots.write_joint_state_to_sim(joint_pos_r, joint_vel_r, None, env_ids)
         
         self.sim_count[env_ids] = 0
-        self.dead_count[env_ids] = 0
         self.pos_d[env_ids] = self.pos_init[env_ids]
         self._compute_intermediate_values()
 
@@ -257,52 +254,9 @@ def compute_rewards(
     reset_terminated: torch.Tensor,
     to_target: torch.Tensor,
 ):
-    # total_reward = 1.0*body_states[:, 6, 0] + 1.0*body_states[:, 6, 7] - 0.2*torch.abs(body_states[:, 0, 1]) - 0.2*torch.abs(body_states[:, 10, 1]) - 0.1*torch.abs(body_states[:, 6, 1])
-    # total_reward = 1.0*(body_states[:, 6, 0]+0.318) + 1.0*body_states[:, 6, 7] - 0.1*torch.abs(body_states[:, 0, 1]) - 0.1*torch.abs(body_states[:, 10, 1]) - 0.8*torch.abs(body_states[:, 6, 1])
-    # reward_a = total_reward- 0.3*torch.abs(body_states[:, 0, 1]) - 0.3*torch.abs(body_states[:, 10, 1]) - 0.1*torch.abs(body_states[:, 6, 1])
-    # total_reward = torch.where(total_reward>1, reward_a, total_reward)
-    # total_reward = 1.0*(body_states[:, 6, 0]+0.318) + 1.0*body_states[:, 6, 7] - 2*torch.abs(body_states[:, 6, 1])
-    # # snake stand
-    # r1 = torch.where(body_states[:, 6, 2] > 0.212, torch.ones_like(reset_terminated), torch.zeros_like(reset_terminated))
-    # total_reward = 0.5*body_states[:, 6, 9] + 0.1*body_states[:, 6, 2] + r1*(body_states[:, 6, 1])
-    # total_reward = 0.5*body_states[:, 6, 9] + 1*body_states[:, 6, 2]
-    # total_reward = torch.where(body_states[:, 6, 2] > 0.212, 0.4*torch.ones_like(total_reward)+ 0.3*body_states[:, 6, 8], total_reward)
-
-    # total_reward = body_states[:, 8, 2]
-    # total_reward = torch.where(body_states[:, 8, 2] > stand_height, torch.ones_like(total_reward)-0.1*body_states[:, 8, 9], torch.zeros_like(total_reward))
-    
-    # it will try to be stand_height
-    # total_reward = torch.where(body_states[:, 8, 2] > stand_height, total_reward-0.1*body_states[:, 8, 9], total_reward)
-    # total_reward = torch.where(body_states[:, 8, 2] > stand_height, total_reward-0.1*body_states[:, 8, 9]-body_states[:, 0, 2]-body_states[:, 15, 2], total_reward)
-    
-    # total_reward = torch.where(body_states[:, 8, 2] > stand_height, 
-    #                            2*torch.ones_like(total_reward)-0.1*body_states[:, 8, 9]-0.1*torch.abs(joint_pos[:, 0])-0.1*torch.abs(joint_pos[:, 7]), 
-    #                            total_reward)
-    # total_reward = torch.where(body_states[:, 8, 2] > stand_height, 
-    #                            2*torch.ones_like(total_reward), 
-    #                            total_reward+0.1*body_states[:, 8, 9])
-    # total_reward = torch.where(body_states[:, 8, 2] > stand_height, 
-    #                            2*torch.ones_like(total_reward) + body_states[:, 8, 1], 
-    #                            total_reward+0.1*body_states[:, 8, 9])
-    # total_reward = 0.1*body_states[:, 8, 2]+0.5*body_states[:, 8, 9]
-    # total_reward = torch.where(body_states[:, 8, 2] > stand_height, 
-    #                            total_reward + body_states[:, 8, 1], 
-    #                            total_reward)
-    # total_reward = 0.5*body_states[:, 8, 2]+0.1*body_states[:, 8, 9]
-    # total_reward = torch.where(body_states[:, 8, 2] > stand_height, 
-    #                            10*total_reward + body_states[:, 8, 1], 
-    #                            total_reward)
-    # total_reward = torch.where(body_states[:, 8, 2] > stand_height, 
-    #                            5*total_reward + body_states[:, 8, 1], 
-    #                            total_reward)
-    # total_reward = torch.where(body_states[:, 8, 2] > stand_height, 
-    #                            total_reward + body_states[:, 8, 1], 
-    #                            total_reward)
-    # total_reward = torch.where(body_states[:, 8, 2] > stand_height, 
-    #                            total_reward + torch.ones_like(total_reward) + body_states[:, 8, 1], 
-    #                            total_reward)
-    
-    total_reward = 0.5*body_states[:, 3, 0] + 0.1*body_states[:, 3, 7]
+    # total_reward = 0.5*body_states[:, 3, 0] + 0.1*body_states[:, 3, 7] + 0.3*(body_states[:, 3, 2]-0.16)
+    rew_distance = 10*torch.exp(-torch.norm(to_target, p=2, dim=-1) / 0.1)
+    total_reward = rew_distance + 0.3*(body_states[:, 3, 2]-0.16)
     
     # adjust reward for wrong way reset agents
     total_reward = torch.where(reset_terminated, -10*torch.ones_like(total_reward), total_reward)
@@ -325,9 +279,12 @@ def compute_intermediate_values(
     body_states = body_state_w.clone()
     body_states[:, :, 0:3] = body_pos
     
+    foot_d = torch.norm(body_pos_w[:, 0, :] - body_pos_w[:, 6, :], p=2, dim=-1)
+    
     return(
         body_pos,
         center_pos,
         body_states,
         to_target,
+        foot_d
     )
