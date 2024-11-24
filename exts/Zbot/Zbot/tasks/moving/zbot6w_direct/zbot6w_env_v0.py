@@ -259,7 +259,7 @@ def compute_rewards(
     total_reward = rew_distance + 0.3*(body_states[:, 3, 2]-0.16)
     
     # adjust reward for wrong way reset agents
-    total_reward = torch.where(reset_terminated, -10*torch.ones_like(total_reward), total_reward)
+    total_reward = torch.where(reset_terminated, -2*torch.ones_like(total_reward), total_reward)
     # total_reward = torch.clamp(total_reward, min=0, max=torch.inf)
     # print(total_reward)
     return total_reward
