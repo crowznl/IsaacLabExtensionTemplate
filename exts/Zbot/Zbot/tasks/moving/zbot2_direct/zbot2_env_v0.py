@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import torch
 
-from Zbot.assets import ZBOT_D_6S_CFG
+from Zbot.assets import ZBOT_D_2S_CFG
 
 import omni.isaac.lab.sim as sim_utils
 from omni.isaac.lab.assets import Articulation, ArticulationCfg
@@ -24,7 +24,7 @@ from gymnasium.spaces import Box
 @configclass
 class Zbot2EnvCfg(DirectRLEnvCfg):
     # robot
-    robot_cfg: ArticulationCfg = ZBOT_D_6S_CFG.replace(prim_path="/World/envs/env_.*/Robot")
+    robot_cfg: ArticulationCfg = ZBOT_D_2S_CFG.replace(prim_path="/World/envs/env_.*/Robot")
     num_dof = 2
     num_body = 4
     

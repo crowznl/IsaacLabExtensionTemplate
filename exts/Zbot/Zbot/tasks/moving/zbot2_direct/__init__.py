@@ -8,7 +8,7 @@ from .zbot2_env_v0 import Zbot2Env, Zbot2EnvCfg
 ##
 
 gym.register(
-    id="Zbot-2-Direct-v0",
+    id="Zbot-2s-walk-v0",
     entry_point="Zbot.tasks.moving.zbot2_direct:Zbot2Env",
     disable_env_checker=True,
     kwargs={
