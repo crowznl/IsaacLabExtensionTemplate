@@ -1,28 +1,19 @@
 import gymnasium as gym
 
 from . import agents
-# from .zbot_env_v00 import ZbotSEnv, ZbotSEnvCfg
-# from .zbot_env_v01 import ZbotSEnv, ZbotSEnvCfg
-# from .zbot_env_v02 import ZbotSEnv, ZbotSEnvCfg
-# from .zbot_env_v03 import ZbotSEnv, ZbotSEnvCfg
-# from .zbot_env_v04 import ZbotSEnv, ZbotSEnvCfg
-# from .zbot_env_v05 import ZbotSEnv, ZbotSEnvCfg
-# from .zbot_env_v06 import ZbotSEnv, ZbotSEnvCfg
-# from .zbot_env_v07 import ZbotSEnv, ZbotSEnvCfg
-# from .zbot_env_v08 import ZbotSEnv, ZbotSEnvCfg
-from .zbot_env_v09 import ZbotSEnv, ZbotSEnvCfg
+from .zbot2_env_v0 import Zbot2Env, Zbot2EnvCfg
 
 ##
 # Register Gym environments.
 ##
 
 gym.register(
-    id="Isaac-Velocity-Flat-Zbot-6s-Direct-v0",
-    entry_point="Zbot.tasks.moving.zbot6_direct:ZbotSEnv",
+    id="Zbot-2-Direct-v0",
+    entry_point="Zbot.tasks.moving.zbot2_direct:Zbot2Env",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": ZbotSEnvCfg, 
-        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:ZbotSFlatPPORunnerCfg",
+        "env_cfg_entry_point": Zbot2EnvCfg, 
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:Zbot2FlatPPORunnerCfg",
     },
 )
 

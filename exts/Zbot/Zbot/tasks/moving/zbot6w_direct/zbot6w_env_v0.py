@@ -17,6 +17,7 @@ from omni.isaac.lab.sensors import ContactSensor, ContactSensorCfg
 from omni.isaac.lab.sim import SimulationCfg
 from omni.isaac.lab.terrains import TerrainImporterCfg 
 from omni.isaac.lab.utils import configclass
+from omni.isaac.lab.utils.math import quat_rotate
 
 from gymnasium.spaces import Box
 
@@ -97,6 +98,9 @@ class ZbotWEnv(DirectRLEnv):
 
         self.targets = torch.tensor([10, 0, 0], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
         self.targets += self.scene.env_origins
+        # x, y
+        self.targetV = torch.tensor([0.1, 0], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
+
         # 重复最后一维 num_module+1 次
         self.e_origins = self.scene.env_origins.unsqueeze(1).repeat(1, self.cfg.num_module+1, 1)
         # print(self.scene.env_origins)
@@ -110,6 +114,7 @@ class ZbotWEnv(DirectRLEnv):
         self._a_idx.extend(self._footR_idx)
         print(self.zbots.find_bodies(".*"))
         print(self.zbots.find_joints(".*"))
+        print(self.zbots.data.body_state_w[:2, 9, 2])  # [0.3679, 0.3679] [0.2995, 0.2995]
         
         
         m = 2*torch.pi
@@ -123,7 +128,10 @@ class ZbotWEnv(DirectRLEnv):
         # self.pos_d = torch.zeros_like(self.zbots.data.joint_pos[:, self._joint_idx])
         self.pos_init = self.zbots.data.default_joint_pos[:, self._joint_idx]
         self.pos_d = self.pos_init.clone()
-        print(self.pos_d.shape)
+        # print(self.pos_d.shape)
+
+        self.shoulder_vec = torch.tensor([0, 0, 1], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
+        self.basis_y = torch.tensor([0, 1, 0], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
 
         self.sim_count = torch.zeros(self.scene.cfg.num_envs, dtype=torch.int, device=self.sim.device)
 
@@ -176,6 +184,12 @@ class ZbotWEnv(DirectRLEnv):
         self.joint_pos = self.zbots.data.joint_pos[:, self._joint_idx]
         self.joint_vel = self.zbots.data.joint_vel[:, self._joint_idx]
         self.body_quat = self.zbots.data.body_quat_w[:, self._a_idx, :]
+        # print(self.zbots.data.body_state_w[:2, 9, 2])
+
+        self.shoulder = quat_rotate(self.body_quat[:,3], self.shoulder_vec)
+        # print(self.shoulder.shape, self.shoulder[0])
+        self.y_proj = torch.einsum("ij,ij->i", self.shoulder, self.basis_y)
+        # print(self.y_proj.shape, self.y_proj[0])
 
         (
             self.body_pos,
@@ -204,11 +218,14 @@ class ZbotWEnv(DirectRLEnv):
         return observations
 
     def _get_rewards(self) -> torch.Tensor:
+        # print(self.foot_d[0:2])  #[0.2134, 0.2134]
         total_reward = compute_rewards(
             self.body_states,
             self.joint_pos,
+            self.y_proj,
             self.reset_terminated,
-            self.to_target
+            self.to_target,
+            self.targetV
         )
         return total_reward
 
@@ -218,7 +235,7 @@ class ZbotWEnv(DirectRLEnv):
 
         time_out = self.episode_length_buf >= self.max_episode_length - 1
         
-        out_of_direction = (self.foot_d >= 0.4)
+        out_of_direction = (self.foot_d <= 0.15) | (self.foot_d >= 0.4)
         
         net_contact_forces = self._contact_sensor.data.net_forces_w_history
         died = torch.any(torch.max(torch.norm(net_contact_forces, dim=-1), dim=1)[0] > 1.0, dim=1)
@@ -245,24 +262,55 @@ class ZbotWEnv(DirectRLEnv):
         self.sim_count[env_ids] = 0
         self.pos_d[env_ids] = self.pos_init[env_ids]
         self._compute_intermediate_values()
+        # # Sample new commands
+        # self._commands[env_ids] = torch.zeros_like(self._commands[env_ids]).uniform_(-1.0, 1.0)
 
 
 @torch.jit.script
 def compute_rewards(
     body_states: torch.Tensor,
     joint_pos: torch.Tensor,
+    y_proj: torch.Tensor,
     reset_terminated: torch.Tensor,
     to_target: torch.Tensor,
+    goal_v: torch.Tensor
 ):
     # total_reward = 0.5*body_states[:, 3, 0] + 0.1*body_states[:, 3, 7] + 0.3*(body_states[:, 3, 2]-0.16)
     # rew_distance = 10*torch.exp(-torch.norm(to_target, p=2, dim=-1) / 0.1)
     # total_reward = rew_distance + 0.3*(body_states[:, 3, 2]-0.16)
-    rew_forward = 1*body_states[:, 3, 7]
-    total_reward = rew_forward + 0.3*(body_states[:, 3, 2]-0.16)
-    # adjust reward for wrong way reset agents
-    total_reward = torch.where(reset_terminated, -2*torch.ones_like(total_reward), total_reward)
+
+    # success, but unstable
+    # rew_forward = 1*body_states[:, 3, 7]
+    # total_reward = rew_forward + 0.3*(body_states[:, 3, 2]-0.16)
+    # total_reward = torch.where(reset_terminated, -5*torch.ones_like(total_reward), total_reward)
+
+    # dv reward if the body is moving
+    # lin_vel_error = torch.sum(torch.abs(goal_v - body_states[:, 3, 7:9]), dim=1)
+    # lin_vel_error_mapped = torch.exp(-lin_vel_error / 0.05)
+    # linv_rew = 2 * lin_vel_error_mapped
+    # #total_reward = linv_rew + 0.3*(body_states[:, 3, 2]-0.16)
+    # total_reward = linv_rew + (y_proj-1)
+    # total_reward = torch.where(reset_terminated, -2*torch.ones_like(total_reward), total_reward)
+
+    # 
+    # total_reward = torch.where(goal_v[:, 0] < body_states[:, 3, 7], 
+    #                            2 * goal_v[:, 0] - body_states[:, 3, 7], 
+    #                            body_states[:, 3, 7])
+    # above is equat to: g - |g - v|
+    # linv_rew = torch.sum(goal_v - torch.abs(goal_v - body_states[:, 3, 7:9]), dim=1)
+    
+    # only measure the x-axis velocity
+    linv_rew = goal_v[:, 0] - torch.abs(goal_v[:, 0] - body_states[:, 3, 7])
+    #rew_symmetry = - torch.abs(joint_pos[:, 0] + joint_pos[:, 5]) - torch.abs(joint_pos[:, 1] + joint_pos[:, 4]) - torch.abs(joint_pos[:, 2] + joint_pos[:, 3])
+    
+    total_reward = 5 * linv_rew + 0.3*torch.abs(body_states[:, 3, 2]-0.2995)
+    # total_reward = 5 * linv_rew + 0.2 * (y_proj-1) + 1 * torch.abs(body_states[:, 3, 9])
+    # total_reward = 5 * linv_rew + 0.2 * (y_proj-1) + 0.2 * torch.abs(body_states[:, 3, 9]) + 1 * rew_symmetry
+
+    # total_reward = torch.where(reset_terminated, -2*torch.ones_like(total_reward), total_reward)
+    total_reward = torch.where(reset_terminated, -5*torch.ones_like(total_reward), total_reward)
+
     # total_reward = torch.clamp(total_reward, min=0, max=torch.inf)
-    # print(total_reward)
     return total_reward
 
 
