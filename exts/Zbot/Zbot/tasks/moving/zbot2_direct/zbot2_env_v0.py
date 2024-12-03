@@ -90,7 +90,8 @@ class Zbot2Env(DirectRLEnv):
         m = 2*torch.pi
         self.dof_lower_limits = torch.tensor([-0.5*m, -0.5*m], dtype=torch.float32, device=self.sim.device)
         self.dof_upper_limits = torch.tensor([0.5*m, 0.5*m], dtype=torch.float32, device=self.sim.device)
-        self.pos_d = torch.zeros_like(self.zbots.data.joint_pos)
+        # self.pos_d = torch.zeros_like(self.zbots.data.joint_pos)
+        self.pos_d = self.zbots.data.default_joint_pos.clone()
         
         self.up_vec = torch.tensor([-1, 0, 0], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
         self.heading_vec = torch.tensor([0, -1, 0], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
@@ -200,16 +201,16 @@ class Zbot2Env(DirectRLEnv):
         self.zbots.reset(env_ids)
         super()._reset_idx(env_ids)
 
-        joint_pos = self.zbots.data.default_joint_pos[env_ids]
-        joint_vel = self.zbots.data.default_joint_vel[env_ids]
+        joint_pos_r = self.zbots.data.default_joint_pos[env_ids]
+        joint_vel_r = self.zbots.data.default_joint_vel[env_ids]
         default_root_state = self.zbots.data.default_root_state[env_ids]
         default_root_state[:, :3] += self.scene.env_origins[env_ids]
 
         self.zbots.write_root_state_to_sim(default_root_state, env_ids)
-        self.zbots.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
+        self.zbots.write_joint_state_to_sim(joint_pos_r, joint_vel_r, None, env_ids)
         
         self.sim_count[env_ids] = 0
-        self.pos_d[env_ids] = 0
+        self.pos_d[env_ids] = self.zbots.data.default_joint_pos[env_ids]
         self._compute_intermediate_values()
 
 
@@ -223,85 +224,15 @@ def compute_rewards(
     up_proj: torch.Tensor
 ):
     
-    #rew_upward = body_states[:, 6, 2] + 0.5*body_states[:, 4, 2] + 0.5*body_states[:, 8, 2] - 0.1*torch.ones_like(body_states[:, 6, 2])
-    rew_symmetry = - torch.abs(joint_pos[:, 0] - joint_pos[:, 5]) - torch.abs(joint_pos[:, 1] - joint_pos[:, 4]) - torch.abs(joint_pos[:, 2] - joint_pos[:, 3])
-
-    # retest it's OK. stand up successfully
-    # total_reward = torch.where(body_states[:, 6, 2] > 0.22,
-    #                            2*torch.ones_like(rew_upward) + 10*rew_upward + 1.0*(up_proj-1) + 0.5*rew_symmetry,
-    #                            10*rew_upward + 1.0*body_states[:, 6, 9] + 1.0*body_states[:, 5, 9] + 0.5*rew_symmetry - 10*contact_sum - 0.5*torch.abs(joint_pos[:, 0]) - 0.5*torch.abs(joint_pos[:, 5]))
-    # total_reward = torch.where(reset_terminated, -10*torch.ones_like(total_reward), total_reward)
-    
-    # scale rewards but cost more steps(>800) to stand up
-    # total_reward = torch.where(body_states[:, 6, 2] > 0.22,
-    #                            2*torch.ones_like(rew_upward) + 2*rew_upward + 0.2*(up_proj-1) + 0.1*rew_symmetry + rew_distance,
-    #                            2*rew_upward + 0.2*body_states[:, 6, 9] + 0.2*body_states[:, 5, 9] + 0.1*rew_symmetry - 2*contact_sum - 0.1*torch.abs(joint_pos[:, 0]) - 0.1*torch.abs(joint_pos[:, 5]))
-    # total_reward = torch.where(reset_terminated, -2*torch.ones_like(total_reward), total_reward)
-
-    # decrease stand_height, cost much more steps(>1000) to stand up, 
-    # and it don't will to walk forward which may lead to fall down.
-    # total_reward = torch.where(body_states[:, 6, 2] > 0.2,
-    #                            2*torch.ones_like(rew_upward) + 2*rew_upward + 0.2*(up_proj-1) + 0.1*rew_symmetry + rew_distance,
-    #                            2*rew_upward + 0.2*body_states[:, 6, 9] + 0.2*body_states[:, 5, 9] + 0.1*rew_symmetry - 2*contact_sum - 0.1*torch.abs(joint_pos[:, 0]) - 0.1*torch.abs(joint_pos[:, 5]))
-    # total_reward = torch.where(reset_terminated, -2*torch.ones_like(total_reward), total_reward)
-
-    # decrease contact_penalty, cannot stand up
-    # total_reward = torch.where(body_states[:, 6, 2] > 0.22,
-    #                            2*torch.ones_like(rew_upward) + 10*rew_upward + 1.0*(up_proj-1) + 0.5*rew_symmetry,
-    #                            10*rew_upward + 1.0*body_states[:, 6, 9] + 1.0*body_states[:, 5, 9] + 0.5*rew_symmetry - 1*contact_sum - 0.5*torch.abs(joint_pos[:, 0]) - 0.5*torch.abs(joint_pos[:, 5]))
-    # total_reward = torch.where(reset_terminated, -10*torch.ones_like(total_reward), total_reward)
-
-    # decrease contact_penalty, cannot stand up
-    # total_reward = torch.where(body_states[:, 6, 2] > 0.22,
-    #                            2*torch.ones_like(rew_upward) + 10*rew_upward + 1.0*(up_proj-1) + 0.5*rew_symmetry,
-    #                            10*rew_upward + 1.0*body_states[:, 6, 9] + 1.0*body_states[:, 5, 9] + 0.5*rew_symmetry - 5*contact_sum - 0.5*torch.abs(joint_pos[:, 0]) - 0.5*torch.abs(joint_pos[:, 5]))
-    # total_reward = torch.where(reset_terminated, -10*torch.ones_like(total_reward), total_reward)
-
-    # decrease reset_penalty, cannot stand up
-    # total_reward = torch.where(body_states[:, 6, 2] > 0.22,
-    #                            2*torch.ones_like(rew_upward) + 10*rew_upward + 1.0*(up_proj-1) + 0.5*rew_symmetry,
-    #                            10*rew_upward + 1.0*body_states[:, 6, 9] + 1.0*body_states[:, 5, 9] + 0.5*rew_symmetry - 10*contact_sum - 0.5*torch.abs(joint_pos[:, 0]) - 0.5*torch.abs(joint_pos[:, 5]))
-    # total_reward = torch.where(reset_terminated, -2*torch.ones_like(total_reward), total_reward)
-    
-    # scale(/5) rewards and increase up_velocity_reward 1, it stand up faster, and orientation is x(interesting), maybe need contact_penalty
-    # total_reward = torch.where(body_states[:, 6, 2] > 0.22,
-    #                            2*torch.ones_like(rew_upward) + 2*rew_upward + 0.2*(up_proj-1) + 0.1*rew_symmetry,
-    #                            2*rew_upward + 1*body_states[:, 6, 9] + 1*body_states[:, 5, 9] + 0.1*rew_symmetry - 2*contact_sum - 0.1*torch.abs(joint_pos[:, 0]) - 0.1*torch.abs(joint_pos[:, 5]))
-    # total_reward = torch.where(reset_terminated, -2*torch.ones_like(total_reward), total_reward)
-    
-    # scale(/5) rewards and increase up_velocity_reward 0.5, dont work, wierd
-    # total_reward = torch.where(body_states[:, 6, 2] > 0.22,
-    #                            2*torch.ones_like(rew_upward) + 2*rew_upward + 0.2*(up_proj-1) + 0.1*rew_symmetry,
-    #                            2*rew_upward + 0.5*body_states[:, 6, 9] + 0.5*body_states[:, 5, 9] + 0.1*rew_symmetry - 2*contact_sum - 0.1*torch.abs(joint_pos[:, 0]) - 0.1*torch.abs(joint_pos[:, 5]))
-    # total_reward = torch.where(reset_terminated, -2*torch.ones_like(total_reward), total_reward)
-
-    # scale | iup_v | contact_penalty it's OK. stand up successfully
-    # total_reward = torch.where(body_states[:, 6, 2] > 0.22,
-    #                            2*torch.ones_like(rew_upward) + 2*rew_upward + 0.2*(up_proj-1) + 0.1*rew_symmetry - 2*contact_sum,
-    #                            2*rew_upward + 1*body_states[:, 6, 9] + 1*body_states[:, 5, 9] + 0.1*rew_symmetry - 2*contact_sum - 0.1*torch.abs(joint_pos[:, 0]) - 0.1*torch.abs(joint_pos[:, 5]))
-    # total_reward = torch.where(reset_terminated, -2*torch.ones_like(total_reward), total_reward)
-
-    # rew_forward = -torch.norm(to_target, p=2, dim=-1)
-    # dy ylast- y or y_velocity_reward
-
-    # it's OK. stand & walk successfully
-    # rew_forward = 1*body_states[:, 2, 8] + 1*body_states[:, 1, 8]
-    # total_reward = torch.where(body_states[:, 6, 2] > 0.22,
-    #                            2*torch.ones_like(rew_upward) + 2*rew_upward + 0.2*(up_proj-1) + 0.1*rew_symmetry + rew_forward,
-    #                            2*rew_upward + 1*body_states[:, 6, 9] + 1*body_states[:, 5, 9] + 0.1*rew_symmetry \
-    #                            - 0.1*torch.abs(joint_pos[:, 0]) - 0.1*torch.abs(joint_pos[:, 5]))
-    # total_reward = torch.where(reset_terminated, -2*torch.ones_like(total_reward), total_reward)
-
-    # rew_distance = torch.exp(-torch.norm(to_target, p=2, dim=-1) / 0.1)
-    # rew_height > 0.67 even robot don't stand up, it can still get big reward
-    # rew_height = torch.exp(-torch.square(body_states[:, 6, 2]-0.25) / 0.1)
-    # total_reward = torch.where(body_states[:, 6, 2] > 0.22,
-    #                            2*torch.ones_like(rew_height) + 10*rew_height + 1.0*(up_proj-1) + 0.5*rew_symmetry + 10*rew_distance,
-    #                            10*rew_height + 1.0*body_states[:, 6, 9] + 1.0*body_states[:, 5, 9] + 0.5*rew_symmetry - 10*contact_sum - 0.5*torch.abs(joint_pos[:, 0]) - 0.5*torch.abs(joint_pos[:, 5]))
-    # total_reward = torch.where(reset_terminated, -10*torch.ones_like(total_reward), total_reward)
+    rew_symmetry = - torch.abs(joint_pos[:, 0] - joint_pos[:, 1])
 
     rew_forward = 1*body_states[:, 2, 8] + 1*body_states[:, 1, 8]
-    total_reward = 0.2*(up_proj-1) + 0.1*rew_symmetry + rew_forward
+    # total_reward = 0.2*(up_proj-1) + 0.5*rew_symmetry + 10 * rew_forward
+
+    # total_reward = 0.1*rew_symmetry + 10 * rew_forward + 10*body_states[:, 2, 1]
+
+    total_reward = 0.5*rew_symmetry + 10 * rew_forward
+
     total_reward = torch.where(reset_terminated, -2*torch.ones_like(total_reward), total_reward)
     # total_reward = torch.clamp(total_reward, min=0, max=torch.inf)
     return total_reward

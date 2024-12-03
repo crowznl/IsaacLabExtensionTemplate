@@ -11,7 +11,7 @@ class Zbot2FlatPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 16  # 32 The number of steps per environment per update.
     max_iterations = 500
     save_interval = 50
-    experiment_name = "zbot_6_flat_direct"
+    experiment_name = "zbot_2_flat_direct" # need to change
     empirical_normalization = False
     policy = RslRlPpoActorCriticCfg(
         init_noise_std=1.0,

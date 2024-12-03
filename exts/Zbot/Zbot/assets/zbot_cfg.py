@@ -216,11 +216,14 @@ ZBOT_D_2S_CFG = ArticulationCfg(
         # collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.02, rest_offset=0.0),
     ),
     init_state=ArticulationCfg.InitialStateCfg(
-        pos=(0.0, 0.0, 0.05),
-        rot=(0.707, 0.0, 0.707, 0.0),
-        # rot=(1.0, 0.0, 0.0, 0.0),  # (w, x, y, z)
+        # pos=(0.0, 0.0, 0.05),
+        # rot=(0.707, 0.0, -0.707, 0.0),
+        pos=(0.0, 0.0, 0.0),
+        rot=(1.0, 0.0, 0.0, 0.0),  # (w, x, y, z)
         joint_pos={
-            "joint[1-2]": 0.0,
+            # "joint[1-2]": 0.0,
+            "joint1": 3.141593,
+            "joint2": -3.141593,  # -180 degrees
         },
         joint_vel={
             "joint[1-2]": 0.0,
