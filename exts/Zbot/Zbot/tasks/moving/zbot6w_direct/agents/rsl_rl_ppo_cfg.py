@@ -8,7 +8,7 @@ from omni.isaac.lab_tasks.utils.wrappers.rsl_rl import (
 
 @configclass
 class ZbotSWFlatPPORunnerCfg(RslRlOnPolicyRunnerCfg):
-    num_steps_per_env = 16  # 32 The number of steps per environment per update.
+    num_steps_per_env = 32  # 16 The number of steps per environment per update.
     max_iterations = 500
     save_interval = 50
     experiment_name = "zbot_6w_flat_direct"

@@ -3,6 +3,8 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
+# implement sin(phi), df/dt reward, use self.step_dt!
+
 from __future__ import annotations
 
 import torch
@@ -133,7 +135,7 @@ class ZbotWEnv(DirectRLEnv):
         self.shoulder_vec = torch.tensor([0, 0, 1], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
         self.basis_y = torch.tensor([0, 1, 0], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
 
-        self.sim_count = torch.zeros(self.scene.cfg.num_envs, dtype=torch.int, device=self.sim.device)
+        self.foot_d_last = 0.2134 * torch.ones(self.scene.cfg.num_envs, dtype=torch.float32, device=self.sim.device)
 
     def _setup_scene(self):
         self.zbots = Articulation(self.cfg.robot_cfg)
@@ -161,20 +163,18 @@ class ZbotWEnv(DirectRLEnv):
         # print('a: ', actions[0], actions.size())  # [64, 18]
 
         # joint_sin-patten-generation_v
-        t = self.sim_count.unsqueeze(1) * self.cfg.sim.dt
+        # t = self.episode_length_buf.unsqueeze(1) * self.step_dt
         ctl_d = self.actions.reshape(self.num_envs, self.cfg.num_dof, 3)
         vmax = 2*torch.pi  # 4*torch.pi
         off = (ctl_d[...,0]+0)*vmax
         amp = (1 - torch.abs(ctl_d[...,0]))*(ctl_d[...,1]+0)*vmax
         phi = (ctl_d[...,2]+0)*2*torch.pi
-        omg = torch.ones_like(ctl_d[...,0]+0)*2*torch.pi
+        # omg = torch.ones_like(ctl_d[...,0]+0)*2*torch.pi
         # print(t.size(), ctl_d.size(), off.size(), amp.size(), phi.size(), omg.size())
-        v_d = off + amp*torch.sin(omg*t + phi)
-        self.pos_d += v_d*self.cfg.sim.dt
+        v_d = off + amp*torch.sin(phi)
+        self.pos_d += v_d*self.step_dt
         self.pos_d = torch.clamp(self.pos_d, min=1*self.dof_lower_limits, max=1*self.dof_upper_limits)
         # print(self.pos_d.size(), self.pos_d[0])
-
-        self.sim_count += 1
 
 
     def _apply_action(self) -> None:
@@ -219,13 +219,15 @@ class ZbotWEnv(DirectRLEnv):
 
     def _get_rewards(self) -> torch.Tensor:
         # print(self.foot_d[0:2])  #[0.2134, 0.2134]
+        self.df = (self.foot_d - self.foot_d_last)/self.step_dt
+        self.foot_d_last = self.foot_d.clone()
         total_reward = compute_rewards(
             self.body_states,
             self.joint_pos,
             self.y_proj,
             self.reset_terminated,
             self.to_target,
-            self.foot_d,
+            self.df,
             self.targetV
         )
         return total_reward
@@ -260,7 +262,7 @@ class ZbotWEnv(DirectRLEnv):
         self.zbots.write_root_state_to_sim(default_root_state, env_ids)
         self.zbots.write_joint_state_to_sim(joint_pos_r, joint_vel_r, None, env_ids)
         
-        self.sim_count[env_ids] = 0
+        self.foot_d_last[env_ids] = 0.2134
         self.pos_d[env_ids] = self.pos_init[env_ids]
         self._compute_intermediate_values()
         # # Sample new commands
@@ -274,7 +276,7 @@ def compute_rewards(
     y_proj: torch.Tensor,
     reset_terminated: torch.Tensor,
     to_target: torch.Tensor,
-    foot_d: torch.Tensor,
+    df: torch.Tensor,
     goal_v: torch.Tensor
 ):
     # total_reward = 0.5*body_states[:, 3, 0] + 0.1*body_states[:, 3, 7] + 0.3*(body_states[:, 3, 2]-0.16)
@@ -313,23 +315,9 @@ def compute_rewards(
     # total_reward = 5 * linv_rew + 0.3*torch.abs(body_states[:, 3, 2]-0.2995)
     # OK
     # total_reward = 5 * linv_rew + 0.1*torch.abs(body_states[:, 3, 2]-0.2995) + 1 * rew_symmetry
-    # concel the dz reward, it only learn to close foots
-    # total_reward = 5 * linv_rew + 1 * rew_symmetry
-    # dfoot_d nothing to do with, still only learn to close foots, not open foots
-    # total_reward = 5 * linv_rew + 0.1*torch.abs(foot_d-0.2134) + 1 * rew_symmetry
-    # diffent sign reward, the same
-    # total_reward = 5 * linv_rew + 0.1*torch.abs(foot_d - 0.2134 - body_states[:, 3, 2] + 0.2995) + 1 * rew_symmetry
-    # the same
-    # total_reward = 5 * linv_rew + 0.01*torch.abs(foot_d - 0.2134 - body_states[:, 3, 2] + 0.2995) + 1 * rew_symmetry
-    # only learn to open foots
-    # total_reward = 5 * linv_rew + 0.1*torch.abs(foot_d - 2* body_states[:, 3, 2] + 0.35) + 1 * rew_symmetry
-    # only learn to close foots, is the penalty too small?
-    # total_reward = 5 * linv_rew + 0.1*torch.abs(foot_d - 1.5* body_states[:, 3, 2] + 0.23585) + 1 * rew_symmetry
-    # total_reward = torch.where(reset_terminated, -5*torch.ones_like(total_reward), total_reward)
-    # increase the reset_penalty, doesn't work
-    # total_reward = 5 * linv_rew + 0.1*torch.abs(foot_d - 1.5* body_states[:, 3, 2] + 0.23585) + 1 * rew_symmetry
-    # total_reward = 5 * linv_rew + 0.1*torch.abs(foot_d - 1.25* body_states[:, 3, 2] + 0.161) + 1 * rew_symmetry
-    total_reward = 5 * linv_rew + 0.1*torch.abs(foot_d - 1.75* body_states[:, 3, 2] + 0.311) + 1 * rew_symmetry
+
+    total_reward = 5 * linv_rew + 0.1*torch.abs(df) + 1 * rew_symmetry
+
     total_reward = torch.where(reset_terminated, -10*torch.ones_like(total_reward), total_reward)
 
     # total_reward = torch.clamp(total_reward, min=0, max=torch.inf)
