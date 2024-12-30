@@ -301,10 +301,10 @@ def compute_rewards(
     #                            2 * goal_v[:, 0] - body_states[:, 3, 7], 
     #                            body_states[:, 3, 7])
     # above is equat to: g - |g - v|
-    # linv_rew = torch.sum(goal_v - torch.abs(goal_v - body_states[:, 3, 7:9]), dim=1)
+    # lin_rew = torch.sum(goal_v - torch.abs(goal_v - body_states[:, 3, 7:9]), dim=1)
     
     # only measure the x-axis velocity
-    linv_rew = goal_v[:, 0] - torch.abs(goal_v[:, 0] - body_states[:, 3, 7])
+    # linv_rew = goal_v[:, 0] - torch.abs(goal_v[:, 0] - body_states[:, 3, 7])
     rew_symmetry = - torch.abs(joint_pos[:, 0] + joint_pos[:, 5]) - torch.abs(joint_pos[:, 1] + joint_pos[:, 4]) - torch.abs(joint_pos[:, 2] + joint_pos[:, 3])
     
     # total_reward = 5 * linv_rew + 0.2 * (y_proj-1) + 1 * torch.abs(body_states[:, 3, 9])
@@ -316,9 +316,19 @@ def compute_rewards(
     # OK
     # total_reward = 5 * linv_rew + 0.1*torch.abs(body_states[:, 3, 2]-0.2995) + 1 * rew_symmetry
 
-    total_reward = 5 * linv_rew + 0.1*torch.abs(df) + 1 * rew_symmetry
+    # total_reward = 5 * linv_rew + 1 * torch.abs(df) + 1 * rew_symmetry  # foot lift up, unstable
+    # total_reward = 5 * linv_rew + 1 * torch.abs(df) + 1 * rew_symmetry  # change the foot_d, foot still lift up
+    # total_reward = 5 * linv_rew + 0.1 * torch.abs(df) + 1 * rew_symmetry  # foot dont move
+    # total_reward = 5 * linv_rew + 0.5 * torch.abs(df) + 1 * rew_symmetry  # foot dont move but rotate
+    # total_reward = 5 * linv_rew + 0.5 * torch.abs(df) + 1 * rew_symmetry + (y_proj-1)  # foot dont move
+    # total_reward = 5 * linv_rew + 1 * torch.abs(df) + 1 * rew_symmetry + (y_proj-1)  #foot lift up again
+    
+    # total_reward = torch.where(reset_terminated, -10*torch.ones_like(total_reward), total_reward)
 
-    total_reward = torch.where(reset_terminated, -10*torch.ones_like(total_reward), total_reward)
+    # total_reward = 1 * body_states[:, 3, 7] + 1 * rew_symmetry  # it is ok, but too fast
+    # total_reward = 1 * body_states[:, 3, 7] + 2 * rew_symmetry  # failed, symmetry penalty is big?
+    total_reward = 1 * body_states[:, 3, 7] + 1.5 * rew_symmetry  # it is ok, but too fast
+    total_reward = torch.where(reset_terminated, -20*torch.ones_like(total_reward), total_reward)
 
     # total_reward = torch.clamp(total_reward, min=0, max=torch.inf)
     return total_reward
@@ -338,7 +348,8 @@ def compute_intermediate_values(
     body_states = body_state_w.clone()
     body_states[:, :, 0:3] = body_pos
     
-    foot_d = torch.norm(body_pos_w[:, 0, :] - body_pos_w[:, 6, :], p=2, dim=-1)
+    # foot_d = torch.norm(body_pos_w[:, 0, :] - body_pos_w[:, 6, :], p=2, dim=-1)  # it may lead to lift foots
+    foot_d = torch.norm(body_pos_w[:, 0, :2] - body_pos_w[:, 6, :2], p=2, dim=-1)
     
     return(
         body_pos,
