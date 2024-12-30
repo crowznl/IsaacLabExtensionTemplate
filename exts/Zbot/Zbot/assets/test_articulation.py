@@ -46,7 +46,7 @@ from omni.isaac.lab.sim import SimulationContext
 ##
 # Pre-defined configs
 ##
-from Zbot.assets import ZBOT_D_6S_CFG, ZBOT_D_6W_CFG
+from Zbot.assets import ZBOT_D_6S_CFG, ZBOT_D_6W_CFG, ZBOT_D_6B_CFG, ZBOT_D_6B_1_CFG
 
 def design_scene() -> tuple[dict, list[list[float]]]:
     """Designs the scene."""
@@ -67,7 +67,7 @@ def design_scene() -> tuple[dict, list[list[float]]]:
 
     # Articulation
     # zbot_cfg = ZBOT_D_6S_CFG.copy()
-    zbot_cfg = ZBOT_D_6W_CFG.copy()
+    zbot_cfg = ZBOT_D_6B_1_CFG.copy()
     zbot_cfg.prim_path = "/World/Origin.*/Robot"
     zbot6s = Articulation(cfg=zbot_cfg)
 
@@ -98,12 +98,12 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict[str, Articula
             # if this is not done, then the robots will be spawned at the (0, 0, 0) of the simulation world
             root_state = robot.data.default_root_state.clone()
             root_state[:, :3] += origins
-            print(root_state)
+            # print(root_state)
             robot.write_root_state_to_sim(root_state)
             # set joint positions with some noise
             joint_pos, joint_vel = robot.data.default_joint_pos.clone(), robot.data.default_joint_vel.clone()
-            print(joint_pos)
-            print(joint_vel)
+            # print(joint_pos)
+            # print(joint_vel)
             # joint_pos += torch.rand_like(joint_pos) * 0.1
             robot.write_joint_state_to_sim(joint_pos, joint_vel)
             # clear internal buffers
@@ -128,6 +128,8 @@ def main():
     """Main function."""
     # Load kit helper
     sim_cfg = sim_utils.SimulationCfg(device=args_cli.device)
+    # Set gravity to zero
+    sim_cfg.gravity = (0.0, 0.0, 0.0)
     sim = SimulationContext(sim_cfg)
     # Set main camera
     sim.set_camera_view([2.5, 0.0, 4.0], [0.0, 0.0, 2.0])

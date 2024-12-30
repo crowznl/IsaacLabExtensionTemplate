@@ -36,6 +36,7 @@ robot_8_usd = "zbot_8s_v0.usd"
 # robot_6w_usd = "zbot_6w_v0.usd"
 robot_6w_usd = "zbot_6w_v1.usd"  # change pivot_b's frame
 robot_2_usd = "zbot_2s_v0.usd"
+robot_6b_usd = "zbot_6b_v0.usd" # bipedal
 
 ##
 # Configuration
@@ -237,6 +238,104 @@ ZBOT_D_2S_CFG = ArticulationCfg(
             velocity_limit=10,
             stiffness=20,
             damping=0.5,
+            friction=0.0,
+        ),
+    },
+)
+
+ZBOT_D_6B_CFG = ArticulationCfg(
+    # prim_path="{ENV_REGEX_NS}/Robot",
+    spawn=sim_utils.UsdFileCfg(
+        usd_path=usd_dir_path + robot_6b_usd,
+        activate_contact_sensors=True,  # True
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(
+            disable_gravity=False,
+            retain_accelerations=False,
+            linear_damping=0.0,
+            angular_damping=0.0,
+            max_linear_velocity=1000.0,
+            max_angular_velocity=1000.0,
+            max_depenetration_velocity=1.0,
+        ),
+        articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+            enabled_self_collisions=True,  # True
+            solver_position_iteration_count=4, 
+            solver_velocity_iteration_count=0
+        ),
+        # collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.02, rest_offset=0.0),
+    ),
+    init_state=ArticulationCfg.InitialStateCfg(
+        pos=(0.0, 0.0, 0.002),
+        rot=(1.0, 0.0, 0.0, 0.0),  # (w, x, y, z)
+        joint_pos={
+            "joint1": 0.0,
+            "joint2": 0.785398,  # 45 degrees
+            "joint3": -1.570796,
+            "joint4": 1.570796,
+            "joint5": -0.785398,
+            "joint6": 0.0,
+        },
+        joint_vel={
+            "joint[1-6]": 0.0,
+        },
+    ),
+    soft_joint_pos_limit_factor=1.0,
+    actuators={
+        "zbot_six": ImplicitActuatorCfg(
+            joint_names_expr=["joint.*"],
+            effort_limit=18,
+            velocity_limit=2.0,  # 46[rev/min]/3 gear_ratio/60 * 2pi = 1.61 rad/s
+            stiffness=20,  # kp
+            damping=0.5,  # kd
+            friction=0.0,
+        ),
+    },
+)
+
+ZBOT_D_6B_1_CFG = ArticulationCfg(
+    # prim_path="{ENV_REGEX_NS}/Robot",
+    spawn=sim_utils.UsdFileCfg(
+        usd_path=usd_dir_path + robot_6b_usd,
+        activate_contact_sensors=True,  # True
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(
+            disable_gravity=False,
+            retain_accelerations=False,
+            linear_damping=0.0,
+            angular_damping=0.0,
+            max_linear_velocity=1000.0,
+            max_angular_velocity=1000.0,
+            max_depenetration_velocity=1.0,
+        ),
+        articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+            enabled_self_collisions=True,  # True
+            solver_position_iteration_count=4, 
+            solver_velocity_iteration_count=0
+        ),
+        # collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.02, rest_offset=0.0),
+    ),
+    init_state=ArticulationCfg.InitialStateCfg(
+        pos=(0.0, 0.0, 0.002),
+        rot=(0.707, 0.0, 0.0, 0.707),  # (w, x, y, z)
+        joint_pos={
+            "joint1": 0.0,
+            "joint2": 0.0,
+            "joint3": 3.141593,
+            "joint4": -3.141593,  # -180 degrees
+            "joint5": 0.0,
+            "joint6": 0.0,
+        },
+        joint_vel={
+            "joint[1-6]": 0.0,
+        },
+    ),
+    soft_joint_pos_limit_factor=1.0,
+    actuators={
+        "zbot_six": ImplicitActuatorCfg(
+            joint_names_expr=["joint.*"],
+            effort_limit=18,
+            velocity_limit=2.0,  # 46[rev/min]/3 gear_ratio/60 * 2pi = 1.61 rad/s
+            stiffness=20,  # kp
+            damping=0.5,  # kd
             friction=0.0,
         ),
     },
