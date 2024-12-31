@@ -135,6 +135,13 @@ class ZbotSEnvCfg(DirectRLEnvCfg):
         prim_path="/World/envs/env_.*/Robot/b6", history_length=3, update_period=0.0, track_air_time=False, 
         filter_prim_paths_expr=["/World/envs/env_.*/Robot/a3", "/World/envs/env_.*/Robot/b2", "/World/envs/env_.*/Robot/a2", "/World/envs/env_.*/Robot/b1"]
     )
+
+    """
+    some regex examples:
+    """
+    # contact_sensor_1: ContactSensorCfg = ContactSensorCfg(
+    #     prim_path="/World/envs/env_.*/Robot/(?!a1|b6)(a.*|b.*)", history_length=3, update_period=0.0, track_air_time=False)
+    
     num_dof = 6
     num_body = 12
     

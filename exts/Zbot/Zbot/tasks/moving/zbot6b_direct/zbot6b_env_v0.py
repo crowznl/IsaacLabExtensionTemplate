@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import torch
 
-from Zbot.assets import ZBOT_D_6B_CFG
+from Zbot.assets import ZBOT_D_6B_CFG, ZBOT_D_6B_1_CFG
 
 import omni.isaac.lab.sim as sim_utils
 from omni.isaac.lab.assets import Articulation, ArticulationCfg
@@ -26,7 +26,7 @@ from gymnasium.spaces import Box
 @configclass
 class ZbotBEnvCfg(DirectRLEnvCfg):
     # robot
-    robot_cfg: ArticulationCfg = ZBOT_D_6B_CFG.replace(prim_path="/World/envs/env_.*/Robot")
+    robot_cfg: ArticulationCfg = ZBOT_D_6B_1_CFG.replace(prim_path="/World/envs/env_.*/Robot")
     contact_sensor_1: ContactSensorCfg = ContactSensorCfg(
         prim_path="/World/envs/env_.*/Robot/(?!a1|b6)(a.*|b.*)", history_length=3, update_period=0.0, track_air_time=False)
     contact_sensor_2: ContactSensorCfg = ContactSensorCfg(
@@ -116,7 +116,7 @@ class ZbotBEnv(DirectRLEnv):
         print(self._contact_sensor)
         self._joint_idx, _ = self.zbots.find_joints("joint.*")
         self._a_idx, _ = self.zbots.find_bodies("a.*")
-        self._footR_idx = self.zbots.find_bodies("pivot_b")[0]
+        self._footR_idx = self.zbots.find_bodies("footR")[0]
         self._a_idx.extend(self._footR_idx)
         print(self.zbots.find_bodies(".*"))
         print(self.zbots.find_joints(".*"))
