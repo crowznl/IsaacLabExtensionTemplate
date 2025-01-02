@@ -55,7 +55,7 @@ class ZbotBEnvCfg(DirectRLEnvCfg):
 
     action_space = Box(low=-1.0, high=1.0, shape=(3*num_dof,)) 
     action_clip = 1.0
-    observation_space = 24  # 16  # 40
+    observation_space = 27
     state_space = 0
 
     # simulation  # use_fabric=True the GUI will not update
@@ -102,10 +102,11 @@ class ZbotBEnv(DirectRLEnv):
     def __init__(self, cfg: ZbotBEnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
 
+        # X/Y linear velocity and yaw angular velocity commands
+        self._commands = torch.zeros(self.num_envs, 3, device=self.device)
+
         self.targets = torch.tensor([0, 10, 0], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
         self.targets += self.scene.env_origins
-        # x, y
-        self.targetV = torch.tensor([0, 0.1], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
 
         # 重复最后一维 num_module+1 次
         self.e_origins = self.scene.env_origins.unsqueeze(1).repeat(1, self.cfg.num_module+1, 1)
@@ -214,16 +215,13 @@ class ZbotBEnv(DirectRLEnv):
     def _get_observations(self) -> dict:
         obs = torch.cat(
             (
-                # self.body_quat.reshape(self.scene.cfg.num_envs, -1),
-                # self.body_quat[:,3].reshape(self.scene.cfg.num_envs, -1),
                 self.body_quat[:,0].reshape(self.scene.cfg.num_envs, -1),
                 self.body_quat[:,3].reshape(self.scene.cfg.num_envs, -1),
                 self.body_quat[:,6].reshape(self.scene.cfg.num_envs, -1),
+                self._commands,
                 self.joint_vel,
                 self.joint_pos,
-                # 4*(6+1)+6+6
-                # 4*(1)+6+6
-                # 4*(3)+6+6
+                # 4*(3)+3+6+6
             ),
             dim=-1,
         )
@@ -241,7 +239,8 @@ class ZbotBEnv(DirectRLEnv):
             self.reset_terminated,
             self.to_target,
             self.df,
-            self.targetV
+            self._commands,
+            self.step_dt
         )
         return total_reward
 
@@ -265,7 +264,13 @@ class ZbotBEnv(DirectRLEnv):
             env_ids = self.zbots._ALL_INDICES
         self.zbots.reset(env_ids)
         super()._reset_idx(env_ids)
-
+        if len(env_ids) == self.num_envs:
+            # Spread out the resets to avoid spikes in training when many environments reset at a similar time
+            self.episode_length_buf[:] = torch.randint_like(self.episode_length_buf, high=int(self.max_episode_length))
+        
+        # Sample new commands
+        self._commands[env_ids] = torch.zeros_like(self._commands[env_ids]).uniform_(-1.0, 1.0)
+        # Reset robot state
         joint_pos_r = self.zbots.data.default_joint_pos[env_ids]  # include wheel joints
         joint_vel_r = self.zbots.data.default_joint_vel[env_ids]
         default_root_state = self.zbots.data.default_root_state[env_ids]
@@ -278,8 +283,6 @@ class ZbotBEnv(DirectRLEnv):
         self.foot_d_last[env_ids] = 0.106
         self.pos_d[env_ids] = self.pos_init[env_ids]
         self._compute_intermediate_values()
-        # # Sample new commands
-        # self._commands[env_ids] = torch.zeros_like(self._commands[env_ids]).uniform_(-1.0, 1.0)
 
 
 @torch.jit.script
@@ -290,8 +293,15 @@ def compute_rewards(
     reset_terminated: torch.Tensor,
     to_target: torch.Tensor,
     df: torch.Tensor,
-    goal_v: torch.Tensor
+    commands: torch.Tensor,
+    step_dt: float,
 ):
+    # linear velocity tracking
+    lin_vel_error = torch.sum(torch.square(commands[:, :2] - body_states[:, 3, 7:9]), dim=1)
+    lin_vel_error_mapped = torch.exp(-lin_vel_error / 0.25)
+    # yaw rate tracking
+    yaw_rate_error = torch.square(commands[:, 2] - body_states[:, 3, 12])
+    yaw_rate_error_mapped = torch.exp(-yaw_rate_error / 0.25)
     # rew_distance = 10*torch.exp(-torch.norm(to_target, p=2, dim=-1) / 0.1)
     # dv reward if the body is moving
     # lin_vel_error = torch.sum(torch.abs(goal_v - body_states[:, 3, 7:9]), dim=1)
@@ -308,20 +318,10 @@ def compute_rewards(
 
     # rew_symmetry = - torch.abs(joint_pos[:, 0] - joint_pos[:, 5]) - torch.abs(joint_pos[:, 1] - joint_pos[:, 4]) - torch.abs(joint_pos[:, 2] - joint_pos[:, 3])
 
-    # biped-1
-    # total_reward = 1 * body_states[:, 3, 8]
-    # total_reward = torch.where(reset_terminated, -20*torch.ones_like(total_reward), total_reward)
-
-    # biped-2-1 not working
-    # total_reward = 1 * body_states[:, 3, 8] + 1 * (y_proj-1)
-    # total_reward = torch.where(reset_terminated, -20*torch.ones_like(total_reward), total_reward)
-    
-    # biped-2-5
-    total_reward = 1 * body_states[:, 3, 8] + 5 * (y_proj-1)
+    # biped-command
+    total_reward = lin_vel_error_mapped * 1.0 * step_dt + yaw_rate_error_mapped * 0.5 * step_dt
     total_reward = torch.where(reset_terminated, -20*torch.ones_like(total_reward), total_reward)
 
-    # biped-3 change the observation dimension to 16. Not good.
-    # biped-3 change the observation dimension to 24. OK
 
     # total_reward = torch.clamp(total_reward, min=0, max=torch.inf)
     return total_reward
