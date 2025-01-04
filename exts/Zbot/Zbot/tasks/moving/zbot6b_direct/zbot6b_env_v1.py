@@ -230,6 +230,7 @@ class ZbotBEnv(DirectRLEnv):
 
     def _get_rewards(self) -> torch.Tensor:
         # print(self.foot_d[0:2])  #[0.2134, 0.2134]
+        print(self._commands[0])
         self.df = (self.foot_d - self.foot_d_last)/self.step_dt
         self.foot_d_last = self.foot_d.clone()
         total_reward = compute_rewards(
@@ -318,10 +319,21 @@ def compute_rewards(
 
     # rew_symmetry = - torch.abs(joint_pos[:, 0] - joint_pos[:, 5]) - torch.abs(joint_pos[:, 1] - joint_pos[:, 4]) - torch.abs(joint_pos[:, 2] - joint_pos[:, 3])
 
-    # biped-command
-    total_reward = lin_vel_error_mapped * 1.0 * step_dt + yaw_rate_error_mapped * 0.5 * step_dt
-    total_reward = torch.where(reset_terminated, -20*torch.ones_like(total_reward), total_reward)
+    # biped-command not good
+    # total_reward = lin_vel_error_mapped * 1.0 * step_dt + yaw_rate_error_mapped * 0.5 * step_dt
+    # total_reward = torch.where(reset_terminated, -20*torch.ones_like(total_reward), total_reward)
 
+    # biped-command + df much better
+    # total_reward = lin_vel_error_mapped * 1.0 * step_dt + yaw_rate_error_mapped * 0.0 * step_dt + 0.5 * df * step_dt
+    # total_reward = torch.where(reset_terminated, -1.0*torch.ones_like(total_reward), total_reward)
+
+    # biped-command not good, rotate in place
+    # total_reward = lin_vel_error_mapped * 1.0 * step_dt + yaw_rate_error_mapped * 0.5 * step_dt + 0.5 * df * step_dt
+    # total_reward = torch.where(reset_terminated, -1.0*torch.ones_like(total_reward), total_reward)
+
+    # biped-command
+    total_reward = lin_vel_error_mapped * 1.0 * step_dt + yaw_rate_error_mapped * 0.1 * step_dt + 0.5 * df * step_dt
+    total_reward = torch.where(reset_terminated, -1.0*torch.ones_like(total_reward), total_reward)
 
     # total_reward = torch.clamp(total_reward, min=0, max=torch.inf)
     return total_reward
