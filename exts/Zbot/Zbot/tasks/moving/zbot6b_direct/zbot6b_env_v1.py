@@ -230,7 +230,7 @@ class ZbotBEnv(DirectRLEnv):
 
     def _get_rewards(self) -> torch.Tensor:
         # print(self.foot_d[0:2])  #[0.2134, 0.2134]
-        print(self._commands[0])
+        # print(self._commands[0])
         self.df = (self.foot_d - self.foot_d_last)/self.step_dt
         self.foot_d_last = self.foot_d.clone()
         total_reward = compute_rewards(
