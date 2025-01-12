@@ -46,7 +46,7 @@ from omni.isaac.lab.sim import SimulationContext
 ##
 # Pre-defined configs
 ##
-from Zbot.assets import ZBOT_D_6S_CFG, ZBOT_D_6W_CFG, ZBOT_D_6B_CFG, ZBOT_D_6B_1_CFG
+from Zbot.assets import ZBOT_D_6S_CFG, ZBOT_D_6W_CFG, ZBOT_D_6B_CFG, ZBOT_D_6B_1_CFG, ZBOT_D_2S_A_CFG
 
 def design_scene() -> tuple[dict, list[list[float]]]:
     """Designs the scene."""
@@ -67,7 +67,8 @@ def design_scene() -> tuple[dict, list[list[float]]]:
 
     # Articulation
     # zbot_cfg = ZBOT_D_6S_CFG.copy()
-    zbot_cfg = ZBOT_D_6B_1_CFG.copy()
+    # zbot_cfg = ZBOT_D_6B_1_CFG.copy()
+    zbot_cfg = ZBOT_D_2S_A_CFG.copy()
     zbot_cfg.prim_path = "/World/Origin.*/Robot"
     zbot6s = Articulation(cfg=zbot_cfg)
 
@@ -128,8 +129,8 @@ def main():
     """Main function."""
     # Load kit helper
     sim_cfg = sim_utils.SimulationCfg(device=args_cli.device)
-    # Set gravity to zero
-    sim_cfg.gravity = (0.0, 0.0, 0.0)
+    # # Set gravity to zero
+    # sim_cfg.gravity = (0.0, 0.0, 0.0)
     sim = SimulationContext(sim_cfg)
     # Set main camera
     sim.set_camera_view([2.5, 0.0, 4.0], [0.0, 0.0, 2.0])
