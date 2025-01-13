@@ -1,4 +1,10 @@
-# 1.clone
+# 0. Now you can directly fork&clone the Zbot branch of upstream repo by acessing the following link:
+>[Zbot/IsaacLabExtensionTemplate](https://github.com/crowznl/IsaacLabExtensionTemplate)
+>
+>**If you do so, you can skip the following steps :)**
+---
+
+# 1. clone
 [IsaacLabExtensionTemplate](https://github.com/isaac-sim/IsaacLabExtensionTemplate)
 
 ```

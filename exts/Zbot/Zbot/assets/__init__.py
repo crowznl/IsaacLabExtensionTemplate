@@ -10,7 +10,8 @@ ISAACLAB_ASSETS_EXT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__)
 """Path to the extension source directory."""
 
 # ISAACLAB_ASSETS_DATA_DIR = os.path.join(ISAACLAB_ASSETS_EXT_DIR, "data")
-ISAACLAB_ASSETS_DATA_DIR = "/home/crowznl/Dev/isaac/asset/zbot/"
+# ISAACLAB_ASSETS_DATA_DIR = "/home/crowznl/Dev/isaac/asset/zbot/"
+ISAACLAB_ASSETS_DATA_DIR = os.path.join(ISAACLAB_ASSETS_EXT_DIR, "Zbot/assets/zbot_assets/")
 """Path to the extension data directory."""
 
 ISAACLAB_ASSETS_METADATA = toml.load(os.path.join(ISAACLAB_ASSETS_EXT_DIR, "config", "extension.toml"))
