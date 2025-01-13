@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import torch
 
-from Zbot.assets import ZBOT_D_2S_A_CFG
+from Zbot.assets import ZBOT_D_2S_CFG, ZBOT_D_2S_A_CFG
 
 import omni.isaac.lab.sim as sim_utils
 from omni.isaac.lab.assets import Articulation, ArticulationCfg
@@ -89,16 +89,17 @@ class Zbot2Env(DirectRLEnv):
         # print(self.scene.env_origins)
         # print(self.e_origins)
         
-        m = 2*torch.pi
+        m = 2*torch.pi*8
         self.dof_lower_limits = torch.tensor([-0.125*m, -0.125*m], dtype=torch.float32, device=self.sim.device)
         self.dof_upper_limits = torch.tensor([0.125*m, 0.125*m], dtype=torch.float32, device=self.sim.device)
         # self.pos_d = torch.zeros_like(self.zbots.data.joint_pos)
         self.pos_d = self.zbots.data.default_joint_pos.clone()
+        print("default", self.pos_d[0:2, :])
         
         self.up_vec = torch.tensor([-1, 0, 0], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
-        self.heading_vec = torch.tensor([0, -1, 0], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
+        self.heading_vec = torch.tensor([0, 1, 0], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
         self.basis_z = torch.tensor([0, 0, 1], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
-        self.basis_x = torch.tensor([1, 0, 0], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
+        self.basis_y = torch.tensor([0, 1, 0], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
 
 
     def _setup_scene(self):
@@ -132,7 +133,7 @@ class Zbot2Env(DirectRLEnv):
         v_d = off + amp*torch.sin(phi)
         self.pos_d += v_d*self.step_dt
         self.pos_d = torch.clamp(self.pos_d, min=self.dof_lower_limits, max=self.dof_upper_limits)
-        # print(self.pos_d.size(), self.pos_d[0])
+        # print(self.pos_d[0])
 
     def _apply_action(self) -> None:
         self.zbots.set_joint_position_target(self.pos_d)
@@ -145,7 +146,10 @@ class Zbot2Env(DirectRLEnv):
         # print(self.center_up.shape, self.center_up[0])
         self.up_proj = torch.einsum("ij,ij->i", self.center_up, self.basis_z)
         # print(self.up_proj.shape, self.up_proj[0])
-        
+        self.center_heading = quat_rotate(self.body_quat[:,1], self.heading_vec)
+        self.heading_proj = torch.einsum("ij,ij->i", self.center_heading, self.basis_y)
+
+
         (
             self.body_pos,
             self.body_states,
@@ -178,7 +182,8 @@ class Zbot2Env(DirectRLEnv):
             self.body_quat,
             self.joint_pos,
             self.reset_terminated,
-            self.up_proj
+            self.up_proj,
+            self.heading_proj
         )
         return total_reward
 
@@ -206,6 +211,7 @@ class Zbot2Env(DirectRLEnv):
         
         self.pos_d[env_ids] = self.zbots.data.default_joint_pos[env_ids]
         self._compute_intermediate_values()
+        # print("reset", self.pos_d[env_ids])
 
 
 @torch.jit.script
@@ -215,17 +221,19 @@ def compute_rewards(
     body_quat: torch.Tensor,
     joint_pos: torch.Tensor,
     reset_terminated: torch.Tensor,
-    up_proj: torch.Tensor
+    up_proj: torch.Tensor,
+    heading_proj: torch.Tensor
 ):
     
     rew_symmetry = - torch.abs(joint_pos[:, 0] - joint_pos[:, 1])
 
+    # rew_forward = 1*body_states[:, 2, 8] + 1*body_states[:, 1, 8] + 1*body_states[:, 2, 1] + 1*body_states[:, 1, 1]
     rew_forward = 1*body_states[:, 2, 8] + 1*body_states[:, 1, 8]
     # total_reward = 0.2*(up_proj-1) + 0.5*rew_symmetry + 10 * rew_forward
 
     # total_reward = 0.1*rew_symmetry + 10 * rew_forward + 10*body_states[:, 2, 1]
 
-    total_reward = 0.5*rew_symmetry + 10 * rew_forward
+    total_reward = 0.5*rew_symmetry + 10 * rew_forward + 0.1*(heading_proj-1)
 
     total_reward = torch.where(reset_terminated, -2*torch.ones_like(total_reward), total_reward)
     # total_reward = torch.clamp(total_reward, min=0, max=torch.inf)
