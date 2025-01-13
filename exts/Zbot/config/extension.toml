@@ -1,18 +1,17 @@
 [package]
 
-# Semantic Versioning is used: https://semver.org/
-version = "0.1.0"
+version = "0.2.0"
 
 # Description
 category = "isaaclab"
 readme  = "README.md"
 
-title = "Extension Template"
-author = "Isaac Lab Project Developers"
-maintainer = "Isaac Lab Project Developers"
-description="Extension Template for Isaac Lab"
-repository = "https://github.com/isaac-sim/IsaacLabExtensionTemplate.git"
-keywords = ["extension", "template", "isaaclab"]
+title = "Zbot Template"
+author = "crowznl"
+maintainer = "crowznl"
+description="Zbot Template for Isaac Lab"
+repository = "https://github.com/crowznl/IsaacLabExtensionTemplate.git"
+keywords = ["extension", "Zbot", "isaaclab"]
 
 [dependencies]
 "omni.isaac.lab" = {}
