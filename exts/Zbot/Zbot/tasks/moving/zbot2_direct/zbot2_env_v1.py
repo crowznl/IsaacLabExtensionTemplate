@@ -26,7 +26,7 @@ from gymnasium.spaces import Box
 @configclass
 class Zbot2EnvCfg(DirectRLEnvCfg):
     # robot
-    robot_cfg: ArticulationCfg = ZBOT_D_2S_A_CFG.replace(prim_path="/World/envs/env_.*/Robot")
+    robot_cfg: ArticulationCfg = ZBOT_D_2S_CFG.replace(prim_path="/World/envs/env_.*/Robot")
     num_dof = 2
     num_body = 4
     
@@ -36,7 +36,7 @@ class Zbot2EnvCfg(DirectRLEnvCfg):
 
     action_space = Box(low=-1.0, high=1.0, shape=(3*num_dof,))
     action_clip = 1.0
-    observation_space = 4
+    observation_space = 4 + 3 * num_dof
     state_space = 0
 
     # simulation  # use_fabric=True the GUI will not update
@@ -82,24 +82,35 @@ class Zbot2Env(DirectRLEnv):
     def __init__(self, cfg: Zbot2EnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
 
-        self.targets = torch.tensor([0, 10, 0], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
+        self.targets = torch.tensor([0, 1, 0], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
         self.targets += self.scene.env_origins
         # 重复最后一维 4 次
         self.e_origins = self.scene.env_origins.unsqueeze(1).repeat(1, self.cfg.num_body, 1)
         # print(self.scene.env_origins)
         # print(self.e_origins)
         
-        m = 2*torch.pi*8
-        self.dof_lower_limits = torch.tensor([-0.125*m, -0.125*m], dtype=torch.float32, device=self.sim.device)
-        self.dof_upper_limits = torch.tensor([0.125*m, 0.125*m], dtype=torch.float32, device=self.sim.device)
+        m = 2*torch.pi
+        # self.dof_lower_limits = torch.tensor([-0.5*m, -0.5*m], dtype=torch.float32, device=self.sim.device)
+        # self.dof_upper_limits = torch.tensor([0.5*m, 0.5*m], dtype=torch.float32, device=self.sim.device)
+        # self.dof_lower_limits = torch.tensor([-0.625*m, -0.625*m], dtype=torch.float32, device=self.sim.device)
+        # self.dof_upper_limits = torch.tensor([-0.375*m, -0.375*m], dtype=torch.float32, device=self.sim.device)
+        self.dof_lower_limits = torch.tensor([-0.6*m, -0.6*m], dtype=torch.float32, device=self.sim.device)
+        self.dof_upper_limits = torch.tensor([-0.4*m, -0.4*m], dtype=torch.float32, device=self.sim.device)
+        # for _A_CFG
+        # self.dof_lower_limits = torch.tensor([-0.125*m, -0.125*m], dtype=torch.float32, device=self.sim.device)
+        # self.dof_upper_limits = torch.tensor([0.125*m, 0.125*m], dtype=torch.float32, device=self.sim.device)
         # self.pos_d = torch.zeros_like(self.zbots.data.joint_pos)
         self.pos_d = self.zbots.data.default_joint_pos.clone()
-        print("default", self.pos_d[0:2, :])
+        # print("default", self.pos_d[0:2, :])
+
         
         self.up_vec = torch.tensor([-1, 0, 0], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
         self.heading_vec = torch.tensor([0, 1, 0], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
         self.basis_z = torch.tensor([0, 0, 1], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
         self.basis_y = torch.tensor([0, 1, 0], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
+
+        # Logging
+        self._episode_sums = {"rew_symmetry": torch.zeros(self.num_envs, dtype=torch.float, device=self.device)}
 
 
     def _setup_scene(self):
@@ -137,6 +148,7 @@ class Zbot2Env(DirectRLEnv):
 
     def _apply_action(self) -> None:
         self.zbots.set_joint_position_target(self.pos_d)
+        # print(self.pos_d[0])  # tensor([ 2.3575, -3.1416], device='cuda:0') tensor([ 2.6531, -2.6389], device='cuda:0')
 
     def _compute_intermediate_values(self):
         self.joint_pos = self.zbots.data.joint_pos
@@ -167,7 +179,8 @@ class Zbot2Env(DirectRLEnv):
                 # self.body_quat.reshape(self.scene.cfg.num_envs, -1),
                 self.joint_vel,
                 self.joint_pos,
-                # 4*6+2+2
+                self.actions,
+                # 2+2+2*3
             ),
             dim=-1,
         )
@@ -175,25 +188,30 @@ class Zbot2Env(DirectRLEnv):
         return observations
 
     def _get_rewards(self) -> torch.Tensor:
-        
-        total_reward = compute_rewards(
+        # print(self.pos_d[0], self.joint_pos[0])
+        # tensor([ 2.0745, -3.9270], device='cuda:0') tensor([ 2.0578, -3.9300], device='cuda:0')
+        # 这说明什么？说明joint_pos并不是规整的，并没有在[-pi, pi]之间
+        total_reward, symmetry_rew = compute_rewards(
             self.body_states,
             self.to_target,
             self.body_quat,
             self.joint_pos,
+            self.joint_vel,
             self.reset_terminated,
             self.up_proj,
             self.heading_proj
         )
+        self._episode_sums["rew_symmetry"] += symmetry_rew
         return total_reward
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         self._compute_intermediate_values()
         time_out = self.episode_length_buf >= self.max_episode_length - 1
         
-        just_fall_down = (self.up_proj <= 0)
+        # overturn = (self.up_proj <= 0.5) | (torch.abs(self.joint_pos[:, 0]-self.joint_pos[:, 1]) >= 0.2*torch.pi)
+        overturn = (self.up_proj <= 0.5)
 
-        return just_fall_down, time_out
+        return overturn, time_out
 
     def _reset_idx(self, env_ids: torch.Tensor | None):
         if env_ids is None or len(env_ids) == self.num_envs:
@@ -213,6 +231,19 @@ class Zbot2Env(DirectRLEnv):
         self._compute_intermediate_values()
         # print("reset", self.pos_d[env_ids])
 
+        # Logging
+        extras = dict()
+        for key in self._episode_sums.keys():
+            episodic_sum_avg = torch.mean(self._episode_sums[key][env_ids])
+            extras["Episode_Reward/" + key] = episodic_sum_avg / self.max_episode_length_s
+            self._episode_sums[key][env_ids] = 0.0
+        self.extras["log"] = dict()
+        self.extras["log"].update(extras)
+        extras = dict()
+        extras["Episode_Termination/overturn"] = torch.count_nonzero(self.reset_terminated[env_ids]).item()
+        extras["Episode_Termination/time_out"] = torch.count_nonzero(self.reset_time_outs[env_ids]).item()
+        self.extras["log"].update(extras)
+
 
 @torch.jit.script
 def compute_rewards(
@@ -220,24 +251,46 @@ def compute_rewards(
     to_target: torch.Tensor,
     body_quat: torch.Tensor,
     joint_pos: torch.Tensor,
+    joint_vel: torch.Tensor,
     reset_terminated: torch.Tensor,
     up_proj: torch.Tensor,
     heading_proj: torch.Tensor
 ):
     
     rew_symmetry = - torch.abs(joint_pos[:, 0] - joint_pos[:, 1])
+    # rew_symmetry = torch.exp(- torch.square(joint_pos[:, 0] - joint_pos[:, 1]) / 0.25)
 
     # rew_forward = 1*body_states[:, 2, 8] + 1*body_states[:, 1, 8] + 1*body_states[:, 2, 1] + 1*body_states[:, 1, 1]
-    rew_forward = 1*body_states[:, 2, 8] + 1*body_states[:, 1, 8]
+    # rew_forward = 1*body_states[:, 2, 8] + 1*body_states[:, 1, 8]
+    # rew_forward = (body_states[:, 2, 8] + body_states[:, 1, 8]) / 2.0
+    # rew_forward = (body_states[:, 2, 8] + body_states[:, 1, 8]) / 2.0 + 1*body_states[:, 2, 1] + 1*body_states[:, 1, 1]
+    # rew_forward = (body_states[:, 2, 8] + body_states[:, 1, 8]) / 2.0 + 1*body_states[:, 2, 1]
+    # rew_forward = (body_states[:, 2, 8] + body_states[:, 1, 8]) / 2.0 + torch.exp(-torch.norm(to_target, p=2, dim=-1) / 0.25)
+    rew_forward = (body_states[:, 2, 8] + body_states[:, 1, 8]) / 2.0 + (joint_vel[:, 0] + joint_vel[:, 1]) / 4.0
+
     # total_reward = 0.2*(up_proj-1) + 0.5*rew_symmetry + 10 * rew_forward
-
     # total_reward = 0.1*rew_symmetry + 10 * rew_forward + 10*body_states[:, 2, 1]
+    # total_reward = 0.5*rew_symmetry + 10 * rew_forward + 0.1*(heading_proj-1)
 
-    total_reward = 0.5*rew_symmetry + 10 * rew_forward + 0.1*(heading_proj-1)
+    """
+    # 对于ZBOT_D_2S_CFG，两个关节初始位置为[pi, -pi]，而关节限制为[-pi, pi]，两个关节都只能从初始位置向某个方向转动，一个只能顺时针，一个只能逆时针。
+    # 而我们想要的动作，其实需要两个关节都向同一个方向转动，因此目前训练的结果只能是一个关节转动，另一个关节不动，所以我们需要改变关节初始位置或者关节限制。
+    #
+    # 方法一：两个关节初始位置设为一样，这样两个关节从初始位置就可以向同一个方向转动，应该能得到某种步态。但还是无法跨过初始位置（因为初始位置就是关节限位）。
+    #       同时，这样的话，symmetry才应该是关节角度相减=0，之前是错的。
+    #       也不能这么说，symmetry都应该是关节角度相减=0，因为joint_pos返回的是[-pi, pi]之间的值，是规整了的。只不过之前有个关节不怎么动，不可能symmetry。【想当然了】
+    #
+    # 方法二：关节限制设为[-pi-x, pi+x]，这样两个关节从初始位置可以向两个方向转动。
+    #       这么说来，两个关节初始位置还有必要设为一样吗，或者说设为不一样有什么好处呢？
+    #       【经过验证，joint_pos并不是规整的，并没有在[-pi, pi]之间，所以两个关节初始位置设为一样是有必要的。不然symmetry用关节角相加相减都不行】！！！
+    #
+    # 对了，如果什么都不改，确实训练出关节角度相加=0才是可能的，但是这样的步态是不对的，我们需要两个关节都向同一个方向转动，而不是向两个方向转动。
+    """
+    total_reward = 1*rew_symmetry + 10 * rew_forward + 0.5*(heading_proj-1)
 
     total_reward = torch.where(reset_terminated, -2*torch.ones_like(total_reward), total_reward)
     # total_reward = torch.clamp(total_reward, min=0, max=torch.inf)
-    return total_reward
+    return total_reward, rew_symmetry
 
 
 @torch.jit.script

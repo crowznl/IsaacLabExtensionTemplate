@@ -224,7 +224,7 @@ ZBOT_D_2S_CFG = ArticulationCfg(
         rot=(1.0, 0.0, 0.0, 0.0),  # (w, x, y, z)
         joint_pos={
             # "joint[1-2]": 0.0,
-            "joint1": 3.141593,
+            "joint1": -3.141593,
             "joint2": -3.141593,  # -180 degrees
         },
         joint_vel={
@@ -271,7 +271,7 @@ ZBOT_D_2S_A_CFG = ArticulationCfg(
         rot=(1.0, 0.0, 0.0, 0.0),  # (w, x, y, z)
         joint_pos={
             "joint[1-2]": 0.0,
-            # "joint1": 3.141593,
+            # "joint1": -3.141593,
             # "joint2": -3.141593,  # -180 degrees
         },
         joint_vel={
@@ -368,7 +368,7 @@ ZBOT_D_6B_1_CFG = ArticulationCfg(
         joint_pos={
             "joint1": 0.0,
             "joint2": 0.0,
-            "joint3": 3.141593,
+            "joint3": -3.141593,
             "joint4": -3.141593,  # -180 degrees
             "joint5": 0.0,
             "joint6": 0.0,
