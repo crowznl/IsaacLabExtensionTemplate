@@ -3,6 +3,7 @@ import gymnasium as gym
 from . import agents
 # from .zbot6w_env_v0 import ZbotWEnv, ZbotWEnvCfg
 from .zbot6w_env_v1 import ZbotWEnv, ZbotWEnvCfg
+# from .zbot6w_env_video import ZbotWEnv, ZbotWEnvCfg
 
 ##
 # Register Gym environments.

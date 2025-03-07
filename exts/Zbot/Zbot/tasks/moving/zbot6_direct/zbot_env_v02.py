@@ -22,13 +22,11 @@ from omni.isaac.lab.utils import configclass
 class ZbotSEnvCfg(DirectRLEnvCfg):
     # env
     decimation = 2
-    episode_length_s = 32
-    num_actions = 6*3
-    num_observations = 25
-    num_states = 0
-
+    episode_length_s = 16
+    action_space = 18
     action_clip = 1.0
-
+    observation_space = 25
+    state_space = 0
     # simulation
     sim: SimulationCfg = SimulationCfg(dt=1 / 120, render_interval=decimation)
     terrain = TerrainImporterCfg(
@@ -51,7 +49,7 @@ class ZbotSEnvCfg(DirectRLEnvCfg):
     num_body = 12
     
     # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=2, replicate_physics=True)
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=1.0, replicate_physics=True)
 
     # reset
     max_off = 0.2 # the robot is reset if it exceeds that position [m]

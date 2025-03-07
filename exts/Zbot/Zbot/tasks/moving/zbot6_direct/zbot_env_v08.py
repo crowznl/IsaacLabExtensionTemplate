@@ -52,6 +52,7 @@ class ZbotSEnvCfg(DirectRLEnvCfg):
     # env
     decimation = 2
     episode_length_s = 16 #  32
+    # episode_length_s = 16 #(for video also changed spaceinterval)#16 #  32
 
     action_space = Box(low=-1.0, high=1.0, shape=(3*num_dof,))
     action_clip = 1.0
@@ -87,6 +88,7 @@ class ZbotSEnvCfg(DirectRLEnvCfg):
     )
 
     # scene
+    # scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=1.0, replicate_physics=True)
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=2.0, replicate_physics=True)
 
     # reset
